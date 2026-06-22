@@ -26,7 +26,7 @@ class Text:
 
     __slots__ = ("plain", "style", "_spans")
 
-    def __init__(self, text="", style=None) -> None:
+    def __init__(self, text: str = "", style: Style | None = None) -> None:
         """Initialise with optional plain text and base style.
 
         Args:
@@ -62,7 +62,7 @@ class Text:
         """
         return cell_len(self.plain)
 
-    def append(self, text, style=None) -> "Text":
+    def append(self, text: str, style: Style | None = None) -> "Text":
         """Append text, optionally styled, returning self for chaining.
 
         Args:
@@ -79,7 +79,7 @@ class Text:
 
         return self
 
-    def stylise(self, style, start=0, end=None) -> "Text":
+    def stylise(self, style: Style, start: int = 0, end: int | None = None) -> "Text":
         """Apply style over [start, end) of the existing text.
 
         Args:

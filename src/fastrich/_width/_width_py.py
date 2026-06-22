@@ -63,7 +63,7 @@ def _in_ranges(
 
 
 @lru_cache(maxsize=4096)
-def char_width(cp, east_asian_width=False) -> int:
+def char_width(cp: int, east_asian_width: bool = False) -> int:
     """Columns occupied by a single codepoint: 0, 1, or 2.
 
     `cp` is an int (ordinal). Control characters are out of contract and
@@ -93,7 +93,7 @@ def char_width(cp, east_asian_width=False) -> int:
     return 1
 
 
-def _has_emoji_complexity(text) -> bool:
+def _has_emoji_complexity(text: str) -> bool:
     """Cheap pre-scan: True if the string needs Tier 3 segmentation.
 
     Combining marks don't count, Tier 2 already sums them at width 0. Only
@@ -116,7 +116,7 @@ def _has_emoji_complexity(text) -> bool:
     return False
 
 
-def _cell_len_simple(text, eaw) -> int:
+def _cell_len_simple(text: str, eaw: bool = False) -> int:
     """Tier 2: sum of per-codepoint widths.
 
     Args:
@@ -129,7 +129,7 @@ def _cell_len_simple(text, eaw) -> int:
     return sum(char_width(ord(ch), eaw) for ch in text)
 
 
-def _cell_len_clusters(text, eaw) -> int:
+def _cell_len_clusters(text: str, eaw: bool = False) -> int:
     """Tier 3: width-aware cluster walk for composed emoji sequences.
 
     Args:
@@ -198,7 +198,7 @@ def _cell_len_clusters(text, eaw) -> int:
 
 
 @lru_cache(maxsize=8192)
-def cell_len(text, east_asian_width=False) -> int:
+def cell_len(text: str, east_asian_width: bool = False) -> int:
     """Number of terminal columns `text` occupies.
 
     Bounded LRU cache: high-cardinality cell text would otherwise grow the

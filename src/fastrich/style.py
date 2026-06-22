@@ -1,4 +1,4 @@
-"""Style: an immutable, hashable text style that compiles to a cached SGR string.
+"""Style an immutable, hashable text style that compiles to a cached SGR string.
 
 A Style records each attribute as a tri-state: `True` (on), `False` (explicitly
 off), or `None` (unset → inherit). Combining layers one style over another:
@@ -8,6 +8,7 @@ set fields win, unset fields fall through. The SGR escape is built once and cach
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
 # Attribute name -> SGR "on" code
 _ATTR_CODES = {
@@ -47,7 +48,7 @@ _FIELDS = (
 )
 
 
-def _color_sgr(name, base) -> str:
+def _color_sgr(name: str, base: int) -> str:
     """Return the SGR code for the given color name and base (30 or 40).
 
     Args:
@@ -78,16 +79,16 @@ class Style:
     def __init__(
         self,
         *,
-        bold=None,
-        dim=None,
-        italic=None,
-        underline=None,
-        blink=None,
-        reverse=None,
-        conceal=None,
-        strike=None,
-        color=None,
-        bgcolor=None,
+        bold: bool | None = None,
+        dim: bool | None = None,
+        italic: bool | None = None,
+        underline: bool | None = None,
+        blink: bool | None = None,
+        reverse: bool | None = None,
+        conceal: bool | None = None,
+        strike: bool | None = None,
+        color: str | None = None,
+        bgcolor: str | None = None,
     ) -> None:
         """Initialise a Style with the given formatting options.
 
@@ -127,7 +128,7 @@ class Style:
         )
         self._sgr = None
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Return whether this style is equal to another style.
 
         Args:
@@ -162,7 +163,7 @@ class Style:
 
         return f"Style({set_fields})"
 
-    def combine(self, other) -> "Style":
+    def combine(self, other: "Style") -> "Style":
         """Layer `other` over `self`: set fields in other win, else inherit.
 
         Args:
@@ -174,9 +175,12 @@ class Style:
         if not other:
             return self
 
-        merged = tuple(o if o is not None else s for s, o in zip(self._key, other._key))
+        merged: dict[str, Any] = {
+            f: (o if o is not None else s)
+            for f, s, o in zip(_FIELDS, self._key, other._key)
+        }
 
-        return Style(**dict(zip(_FIELDS, merged)))
+        return Style(**merged)
 
     __add__ = combine
 
@@ -200,7 +204,7 @@ class Style:
 
         return self._sgr
 
-    def render(self, text) -> str:
+    def render(self, text: str) -> str:
         """Wrap `text` in this style's SGR + reset (plain if no style).
 
         Args:
@@ -213,7 +217,7 @@ class Style:
         return f"{sgr}{text}{_RESET}" if sgr else text
 
     @classmethod
-    def parse(cls, definition) -> "Style":
+    def parse(cls, definition: str) -> "Style":
         """Parse a style definition string into a `Style` instance.
 
         Args:
@@ -229,7 +233,7 @@ NULL_STYLE = Style()
 
 
 @lru_cache(maxsize=1024)
-def _parse(definition) -> "Style":
+def _parse(definition: str) -> "Style":
     """Parse a style definition string into a `Style` instance.
 
     Args:
@@ -241,7 +245,7 @@ def _parse(definition) -> "Style":
     Raises:
         ValueError: If an unknown style token is encountered.
     """
-    kw = {}
+    kw: dict[str, Any] = {}
     tokens = iter(definition.split())
     for tok in tokens:
         if tok == "on":  # background follows
