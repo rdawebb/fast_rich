@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = [
+  "import-linter>=2.0,<3.0",
   "prek>=0.4.5,<1.0.0",
   "pytest>=9.0.3,<10.0.0",
   "pytest-cov>=7.1.0,<8.0.0",
@@ -24,3 +25,27 @@ module-name = "fastrich"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.importlinter]
+root_package = "fastrich"
+
+[[tool.importlinter.contracts]]
+name = "Public render stack is layered (console -> text -> segment -> style)"
+type = "layers"
+layers = [
+  "console",
+  "text",
+  "segment",
+  "style",
+]
+containers = ["fastrich"]
+
+[[tool.importlinter.contracts]]
+name = "Width engine depends on nothing public"
+type = "forbidden"
+source_modules = ["fastrich._width"]
+forbidden_modules = [
+  "fastrich.style",
+  "fastrich.text",
+  "fastrich.console",
+]

@@ -5,11 +5,13 @@ Submodules load lazily so that importing the package stays cheap.
 
 import importlib
 
-__all__ = ["cell_len", "char_width", "Style", "Text"]
+__all__ = ["cell_len", "char_width", "Console", "ConsoleOptions", "Style", "Text"]
 
 _LAZY = {
     "cell_len": "fastrich._width",
     "char_width": "fastrich._width",
+    "Console": "fastrich.console",
+    "ConsoleOptions": "fastrich.console",
     "Style": "fastrich.style",
     "Text": "fastrich.text",
 }

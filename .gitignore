@@ -219,3 +219,4 @@ __marimo__/
 
 # Dev
 dev/
+.import_linter_cache/

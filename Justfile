@@ -26,8 +26,12 @@ format:
 type:
     uv run ty check src tests
 
+# Check import contracts
+imports:
+    uv run lint-imports
+
 # Check code quality
-check: lint format type
+check: lint format type imports
 
 # Run all pre-commit hooks
 pre:
