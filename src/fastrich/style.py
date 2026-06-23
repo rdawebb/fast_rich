@@ -33,6 +33,7 @@ _COLORS = {
     "white": 7,
 }
 _RESET = "\x1b[0m"
+_RESET_BYTES = b"\x1b[0m"
 
 _FIELDS = (
     "bold",
@@ -74,7 +75,7 @@ def _color_sgr(name: str, base: int) -> str:
 class Style:
     """Style represents a rich text style, including SGR codes for color and formatting."""
 
-    __slots__ = (*_FIELDS, "_key", "_sgr")
+    __slots__ = (*_FIELDS, "_key", "_sgr", "_sgr_bytes")
 
     def __init__(
         self,
@@ -127,6 +128,7 @@ class Style:
             bgcolor,
         )
         self._sgr = None
+        self._sgr_bytes = None
 
     def __eq__(self, other: object) -> bool:
         """Return whether this style is equal to another style.
@@ -163,6 +165,7 @@ class Style:
 
         return f"Style({set_fields})"
 
+    @lru_cache(maxsize=512)
     def combine(self, other: "Style") -> "Style":
         """Layer `other` over `self`: set fields in other win, else inherit.
 
@@ -215,6 +218,35 @@ class Style:
         """
         sgr = self.sgr
         return f"{sgr}{text}{_RESET}" if sgr else text
+
+    @property
+    def sgr_bytes(self) -> bytes:
+        """The `\\x1b[...m` prefix as bytes (empty bytes if no codes).
+
+        Returns:
+            The SGR prefix encoded to ASCII bytes.
+        """
+        if self._sgr_bytes is None:
+            s = self.sgr
+            self._sgr_bytes = s.encode("ascii") if s else b""
+
+        return self._sgr_bytes
+
+    def render_bytes(self, text: str, encoding: str = "utf-8") -> bytes:
+        """Wrap `text` in this style's SGR + reset as bytes (plain encode if no style).
+
+        Args:
+            text: The text to render.
+            encoding: The encoding to use for the text content.
+
+        Returns:
+            The encoded bytes with SGR prefix and reset suffix if styled.
+        """
+        sgr = self.sgr_bytes
+        if sgr:
+            return sgr + text.encode(encoding) + _RESET_BYTES
+
+        return text.encode(encoding)
 
     @classmethod
     def parse(cls, definition: str) -> "Style":

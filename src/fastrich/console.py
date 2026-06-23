@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import os
 import sys
-from typing import Any, Iterable, NamedTuple
+from functools import cached_property
+from typing import Any, Callable, Iterable, NamedTuple
 
+from .segment import Segment, encode_line, split_lines
 from .style import Style
 from .text import Text
 
@@ -39,12 +42,16 @@ class Console:
             color_system: The color system to use. Defaults to "auto".
             force_terminal: Whether to force the use of a terminal. Defaults to None.
         """
-        self.file = file if file is not None else sys.stdout
+        self.file: Any = file if file is not None else sys.stdout
         self._width = width
         self._force_terminal = force_terminal
         self._color_system_arg = (
             color_system  # "auto" | None | "standard" | "256" | "truecolor"
         )
+        # The byte-emitting writer is resolved and cached from sink type on first write
+        self._writer: Callable[[bytes], None] | None = None
+        # Caches final bytes for single-string print() calls keyed on (text, style_key, sep, end)
+        self._print_cache: dict[tuple, bytes] = {}
 
     def _fileno(self) -> int | None:
         """Return the file descriptor of the console file, or None if not available.
@@ -140,7 +147,7 @@ class Console:
 
         return "standard"
 
-    @property
+    @cached_property
     def no_color(self) -> bool:
         """Return whether color is disabled for the console.
 
@@ -149,7 +156,7 @@ class Console:
         """
         return self.color_system is None
 
-    @property
+    @cached_property
     def encoding(self) -> str:
         """Return the encoding of the console file.
 
@@ -180,21 +187,24 @@ class Console:
 
     def render(
         self, renderable, options: ConsoleOptions | None = None
-    ) -> Iterable[str]:
-        """Yield ANSI string pieces for any renderable, color policy applied.
+    ) -> Iterable[Segment]:
+        """Yield styled segments for any renderable.
 
         Args:
             renderable: The renderable to render.
             options: The console options to use.
 
-        Returns:
-            The rendered string.
+        Yields:
+            One `Segment` per styled run of text.
         """
-        if isinstance(renderable, Text):
-            yield self._render_text(renderable)
+        if isinstance(renderable, Segment):
+            yield renderable
+
+        elif isinstance(renderable, Text):
+            yield from renderable.__rich_console__(self, options or self.options)
 
         elif isinstance(renderable, str):
-            yield self._render_text(Text(renderable))
+            yield Segment(renderable)
 
         elif hasattr(renderable, RICH_PROTOCOL):
             opts = options or self.options
@@ -203,7 +213,7 @@ class Console:
                 yield from self.render(child, opts)
 
         else:
-            yield self._render_text(Text(str(renderable)))
+            yield Segment(str(renderable))
 
     def render_str(self, renderable) -> str:
         """Render the given renderable as a string, applying color policy if enabled.
@@ -214,24 +224,86 @@ class Console:
         Returns:
             The rendered string.
         """
-        return "".join(self.render(renderable))
+        if self.no_color:
+            return "".join(seg.text for seg in self.render(renderable))
 
-    def _write(self, s: str) -> None:
-        """Write the given string to the console file, applying the encoding if necessary.
+        return "".join(
+            seg.style.render(seg.text) if seg.style else seg.text
+            for seg in self.render(renderable)
+        )
+
+    def _resolve_writer(self) -> Callable[[bytes], None]:
+        """Build a writer that emits the encoded bytes to the console sink.
+
+        The sink type is inspected once; the returned callable takes raw bytes
+        (as produced by `print`) and writes them in the form the sink accepts,
+        decoding back to str only for a pure text sink.
+
+        Returns:
+            A callable that writes encoded bytes to the sink.
+        """
+        file = self.file
+
+        # Text stream over a raw byte buffer: emit bytes
+        buffer = getattr(file, "buffer", None)
+        if buffer is not None:
+            buffer_write, buffer_flush = buffer.write, buffer.flush
+
+            def write_via_buffer(data: bytes) -> None:
+                """Write bytes via the buffer's write method, then flush.
+
+                Args:
+                    data: The bytes to write.
+                """
+                buffer_write(data)
+                buffer_flush()
+
+            return write_via_buffer
+
+        # Native binary sink: emit bytes directly
+        if isinstance(file, (io.RawIOBase, io.BufferedIOBase)):
+            file_write = file.write
+            file_flush = getattr(file, "flush", None)
+
+            def write_binary(data: bytes) -> None:
+                """Write binary data directly to the file.
+
+                Args:
+                    data: The bytes to write.
+                """
+                file_write(data)
+                if file_flush:
+                    file_flush()
+
+            return write_binary
+
+        # Pure text sink (e.g. StringIO): decode bytes back to str
+        encoding = self.encoding
+        file_write = file.write
+        file_flush = getattr(file, "flush", None)
+
+        def write_text(data: bytes) -> None:
+            """Write text data to the file, decoding bytes to str using the console encoding.
+
+            Args:
+                data: The bytes to write.
+            """
+            file_write(data.decode(encoding))
+            if file_flush:
+                file_flush()
+
+        return write_text
+
+    def _write_bytes(self, data: bytes) -> None:
+        """Write the encoded bytes to the console sink via the cached writer.
 
         Args:
-            s: The string to write.
+            data: The bytes to write.
         """
-        buffer = getattr(self.file, "buffer", None)
-        if buffer is not None:
-            buffer.write(s.encode(self.encoding))
-            buffer.flush()
+        if self._writer is None:
+            self._writer = self._resolve_writer()
 
-        else:
-            self.file.write(s)
-            flush = getattr(self.file, "flush", None)
-            if flush:
-                flush()
+        self._writer(data)
 
     def print(
         self,
@@ -251,12 +323,41 @@ class Console:
         if style is not None and not isinstance(style, Style):
             style = Style.parse(style)
 
-        parts = []
-        for obj in objects:
+        # Fast path: single plain string — cache the final bytes keyed on content + style
+        if len(objects) == 1 and isinstance(objects[0], str):
+            key = (objects[0], style._key if style is not None else None, sep, end)
+            cached = self._print_cache.get(key)
+
+            if cached is None:
+                seg = Segment(objects[0], style)
+                no_color, encoding = self.no_color, self.encoding
+                lines = [
+                    encode_line(tuple(line), no_color, encoding)
+                    for line in split_lines([seg])
+                ]
+
+                cached = b"\n".join(lines) + end.encode(encoding)
+                self._print_cache[key] = cached
+
+            self._write_bytes(cached)
+            return
+
+        segments = []
+        for i, obj in enumerate(objects):
+            if i:
+                segments.append(Segment(sep))
+
             if style is not None and isinstance(obj, str):
-                parts.append(self._render_text(Text(obj, style=style)))
+                segments.append(Segment(obj, style))
 
             else:
-                parts.append(self.render_str(obj))
+                segments.extend(self.render(obj))
 
-        self._write(sep.join(parts) + end)
+        no_color, encoding = self.no_color, self.encoding
+
+        lines = [
+            encode_line(tuple(line), no_color, encoding)
+            for line in split_lines(segments)
+        ]
+
+        self._write_bytes(b"\n".join(lines) + end.encode(encoding))
