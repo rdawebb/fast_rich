@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 from ._width import cell_len
 from .style import NULL_STYLE, Style
+from .wrap import fit_end, wrap_offsets
 
 
 class Span(NamedTuple):
@@ -81,7 +82,7 @@ class Text:
 
         return self
 
-    def stylise(self, style: Style, start: int = 0, end: int | None = None) -> "Text":
+    def stylize(self, style: Style, start: int = 0, end: int | None = None) -> "Text":
         """Apply style over [start, end) of the existing text.
 
         Args:
@@ -100,6 +101,8 @@ class Text:
             self._spans.append(Span(start, end, style))
 
         return self
+
+    stylise = stylize  # British-spelling alias
 
     def _segments(self):
         """Yield one Segment per span-boundary interval.
@@ -176,3 +179,107 @@ class Text:
             The rendered ANSI string.
         """
         return self.render_bytes().decode("utf-8")
+
+    def render_lines(self, width, justify="left", overflow="fold", base_style=None):
+        """Render to a list of lines (each a list of Segments), fitted to width.
+
+        Uses the same boundary-based interval resolution as `_segments`, so a
+        cell's styling survives wrapping and overflow.
+
+        Args:
+            width: The width to fit the text to.
+            justify: How to justify the text within the width ("left", "center", "right").
+            overflow: How to handle overflow ("fold", "ellipsis", "fold_ellipsis").
+            base_style: A style to apply under the Text's own style and spans.
+
+        Returns:
+            A list of lines, each a list of Segments.
+        """
+        from .segment import Segment
+
+        text = self.plain
+        n = len(text)
+
+        base = NULL_STYLE
+        if base_style:
+            base = base.combine(base_style)
+
+        if self.style:
+            base = base.combine(self.style)
+
+        spans = self._spans
+        edges = (
+            sorted({max(0, s.start) for s in spans} | {min(n, s.end) for s in spans})
+            if spans
+            else []
+        )
+
+        def range_segments(start: int, end: int) -> list[Segment]:
+            """Return the segments for the text range.
+
+            Args:
+                start: The start index of the range.
+                end: The end index of the range.
+
+            Returns:
+                A list of segments for the text range (start, end).
+            """
+            if start >= end:
+                return []
+
+            if not spans:
+                return [Segment(text[start:end], base if base else None)]
+
+            pts = [start, *(p for p in edges if start < p < end), end]
+            out = []
+            for lo, hi in zip(pts, pts[1:]):
+                style = base
+                for span in spans:
+                    if span.start <= lo and span.end >= hi:
+                        style = style.combine(span.style)
+                out.append(Segment(text[lo:hi], style if style else None))
+
+            return out
+
+        def line(start: int, end: int, ellipsis=False) -> list[Segment]:
+            """Return a line of text as a list of segments, with optional ellipsis and padding.
+
+            Args:
+                start: The start index of the text to include.
+                end: The end index of the text to include.
+                ellipsis: Whether to include an ellipsis at the end if the line overflows.
+
+            Returns:
+                A list of segments representing the line of text.
+            """
+            segs = range_segments(start, end)
+            used = cell_len(text[start:end])
+            if ellipsis:
+                segs.append(Segment("…"))
+                used += 1
+
+            pad = width - used
+            if pad > 0:
+                if justify == "right":
+                    segs.insert(0, Segment(" " * pad))
+
+                elif justify == "center":
+                    left = pad // 2
+                    segs.insert(0, Segment(" " * left))
+                    segs.append(Segment(" " * (pad - left)))
+
+                else:
+                    segs.append(Segment(" " * pad))
+
+            return segs
+
+        if overflow == "fold":
+            return [line(s, e) for s, e in wrap_offsets(text, width)]
+
+        if cell_len(text) <= width:
+            return [line(0, n)]
+
+        if overflow == "ellipsis" and width >= 1:
+            return [line(0, fit_end(text, width - 1), ellipsis=True)]
+
+        return [line(0, fit_end(text, width))]

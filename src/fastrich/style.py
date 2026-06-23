@@ -165,7 +165,6 @@ class Style:
 
         return f"Style({set_fields})"
 
-    @lru_cache(maxsize=512)
     def combine(self, other: "Style") -> "Style":
         """Layer `other` over `self`: set fields in other win, else inherit.
 
@@ -175,15 +174,7 @@ class Style:
         Returns:
             The combined style.
         """
-        if not other:
-            return self
-
-        merged: dict[str, Any] = {
-            f: (o if o is not None else s)
-            for f, s, o in zip(_FIELDS, self._key, other._key)
-        }
-
-        return Style(**merged)
+        return _combine(self, other)
 
     __add__ = combine
 
@@ -264,6 +255,28 @@ class Style:
 NULL_STYLE = Style()
 
 
+@lru_cache(maxsize=8192)
+def _combine(a: "Style", b: "Style") -> "Style":
+    """Value-keyed style combine (a under b). Equal styles dedupe via
+    Style's hash/eq on `_key`, so the bound covers distinct style pairs.
+
+    Args:
+        a: The base `Style` instance.
+        b: The `Style` instance to combine over `a`.
+
+    Returns:
+        The combined `Style` instance.
+    """
+    if not b:
+        return a
+
+    merged: dict[str, Any] = {
+        f: (o if o is not None else s) for f, s, o in zip(_FIELDS, a._key, b._key)
+    }
+
+    return Style(**merged)
+
+
 @lru_cache(maxsize=1024)
 def _parse(definition: str) -> "Style":
     """Parse a style definition string into a `Style` instance.
@@ -280,7 +293,7 @@ def _parse(definition: str) -> "Style":
     kw: dict[str, Any] = {}
     tokens = iter(definition.split())
     for tok in tokens:
-        if tok == "on":  # background follows
+        if tok == "on":  # Background follows
             kw["bgcolor"] = next(tokens)
             continue
 

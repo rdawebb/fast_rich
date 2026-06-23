@@ -16,73 +16,10 @@ if TYPE_CHECKING:
 from ._width import cell_len
 from .box import SQUARE, Box
 from .segment import Segment
-from .style import NULL_STYLE, Style
+from .style import Style
 from .text import Text
 
 _NEWLINE = Segment("\n")
-
-
-def _crop(text: str, width: int) -> str:
-    """Truncate `text` to exactly `width` columns.
-
-    Args:
-        text: The text to crop.
-        width: The desired width in columns.
-
-    Returns:
-        The cropped text.
-    """
-    if width <= 0:
-        return ""
-
-    total = 0
-    out = []
-    for ch in text:
-        cw = cell_len(ch)
-        if total + cw > width:
-            break
-
-        out.append(ch)
-        total += cw
-
-    if total < width:
-        out.append(" " * (width - total))
-
-    return "".join(out)
-
-
-def _fit(text: str, width: int, justify: str, overflow: str) -> str:
-    """Return `text` rendered to exactly `width` columns.
-
-    Args:
-        text: The text to fit.
-        width: The desired width in columns.
-        justify: The justification of the text.
-        overflow: The overflow behavior.
-
-    Returns:
-        The fitted text.
-    """
-    w = cell_len(text)
-    if w == width:
-        return text
-
-    if w < width:
-        pad = width - w
-        if justify == "right":
-            return " " * pad + text
-
-        if justify == "center":
-            left = pad // 2
-            return " " * left + text + " " * (pad - left)
-
-        return text + " " * pad
-
-    # overflow: w > width
-    if overflow == "ellipsis" and width >= 1:
-        return _crop(text, width - 1) + "…"
-
-    return _crop(text, width)  # Crop (and fold, until wrapping lands)
 
 
 class Column:
@@ -242,8 +179,20 @@ class Table:
         widths = self._fit_to(widths, options.max_width - overhead)
 
         b, bs = self.box, self.border_style
+        pad_str = " " * pad
 
         def hrule(left: str, mid: str, div: str, right: str) -> Iterable[Segment]:
+            """Draw a horizontal rule using the given border characters and widths.
+
+            Args:
+                left: The left border character.
+                mid: The mid border character.
+                div: The divider character.
+                right: The right border character.
+
+            Returns:
+                An iterable of segments representing the horizontal rule.
+            """
             segs = [Segment(left, bs)]
             for i, w in enumerate(widths):
                 if i:
@@ -254,39 +203,54 @@ class Table:
 
             return segs
 
-        def row_segments(cells: list[Text], header: bool) -> Iterable[Segment]:
-            segs = [Segment(b.left, bs)]
-            for i, (text, w, col) in enumerate(zip(cells, widths, self.columns)):
-                if i:
-                    segs.append(Segment(b.divider, bs))
+        def emit_row(cell_texts, header: bool) -> Iterable[Segment]:
+            """Emit a row of cells with the given texts and header style.
 
-                fitted = _fit(text.plain, w, col.justify, col.overflow)
-                content = f"{' ' * pad}{fitted}{' ' * pad}"
-                if header:
-                    base = col.header_style or self.header_style
+            Args:
+                cell_texts: The texts to display in the row.
+                header: Whether this is a header row.
+            """
+            if header:
+                bases = [c.header_style or self.header_style for c in self.columns]
+            else:
+                bases = [c.style for c in self.columns]
 
-                else:
-                    base = col.style or NULL_STYLE
-                    if text.style:
-                        base = base.combine(text.style)
+            cell_lines = [
+                text.render_lines(w, col.justify, col.overflow, base)
+                for text, w, col, base in zip(cell_texts, widths, self.columns, bases)
+            ]
+            height = max(len(cl) for cl in cell_lines)
 
-                segs.append(Segment(content, base if base else None))
-            segs.append(Segment(b.right, bs))
+            for li in range(height):
+                line = [Segment(b.left, bs)]
+                for ci, (cl, w, base) in enumerate(zip(cell_lines, widths, bases)):
+                    if ci:
+                        line.append(Segment(b.divider, bs))
 
-            return segs
+                    fill = base if base else None
+                    line.append(Segment(pad_str, fill))
+
+                    if li < len(cl):
+                        line.extend(cl[li])
+
+                    else:
+                        line.append(Segment(" " * w, fill))  # Blank line for short cell
+
+                    line.append(Segment(pad_str, fill))
+
+                line.append(Segment(b.right, bs))
+                yield from line
+                yield _NEWLINE
 
         yield from hrule(b.top_left, b.top, b.top_divider, b.top_right)
         yield _NEWLINE
 
         if self.show_header:
-            header_cells = [Text(c.header) for c in self.columns]
-            yield from row_segments(header_cells, header=True)
-            yield _NEWLINE
+            yield from emit_row([Text(c.header) for c in self.columns], header=True)
             yield from hrule(b.head_left, b.head, b.head_divider, b.head_right)
             yield _NEWLINE
 
         for row in self.rows:
-            yield from row_segments(row, header=False)
-            yield _NEWLINE
+            yield from emit_row(row, header=False)
 
         yield from hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right)
