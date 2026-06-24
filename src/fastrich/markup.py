@@ -13,7 +13,22 @@ import re
 from .style import Style
 from .text import Text
 
-_TAG_RE = re.compile(r"(?<!\\)\[([^\[\]]*)\]")
+_TAG_RE = re.compile(r"(?<!\\)\[([a-z#/@][^\[\]]*)\]")
+
+
+def escape(markup: str) -> str:
+    """Escape `markup` so its brackets render literally instead of as tags.
+
+    Prefixes a backslash to each `[`; the parser's `(?<!\\)` lookbehind then
+    skips it and `add_literal` restores the bracket.
+
+    Args:
+        markup: The string to escape.
+
+    Returns:
+        The escaped string, safe to pass through markup rendering verbatim.
+    """
+    return markup.replace("[", "\\[")
 
 
 def render(markup: str, style=None) -> Text:

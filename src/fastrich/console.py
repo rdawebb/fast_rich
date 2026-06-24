@@ -33,6 +33,7 @@ class Console:
         width: int | None = None,
         color_system: str | None = "auto",
         force_terminal: bool | None = None,
+        markup: bool = True,
     ) -> None:
         """Initialise the Console with optional file, width, color system, and force terminal settings.
 
@@ -41,10 +42,12 @@ class Console:
             width: The width of the terminal. Defaults to the terminal width.
             color_system: The color system to use. Defaults to "auto".
             force_terminal: Whether to force the use of a terminal. Defaults to None.
+            markup: Whether to parse console markup in strings. Defaults to True.
         """
         self.file: Any = file if file is not None else sys.stdout
         self._width = width
         self._force_terminal = force_terminal
+        self._markup = markup
         self._color_system_arg = (
             color_system  # "auto" | None | "standard" | "256" | "truecolor"
         )
@@ -174,6 +177,34 @@ class Console:
         """
         return ConsoleOptions(max_width=self.width)
 
+    def _str_to_text(
+        self,
+        text: str,
+        style: Style | None = None,
+        markup: bool | None = None,
+    ) -> Text:
+        """Convert a string to a Text, parsing console markup unless disabled.
+
+        The single place strings become renderables, so markup is applied
+        uniformly to top-level `print` arguments and nested string children.
+
+        Args:
+            text: The string to convert.
+            style: Base style applied under any markup spans.
+            markup: Per-call override for markup parsing; falls back to the
+                console default when None.
+
+        Returns:
+            The resulting Text.
+        """
+        use_markup = self._markup if markup is None else markup
+        if use_markup and "[" in text:
+            from .markup import render as render_markup
+
+            return render_markup(text, style)
+
+        return Text(text, style)
+
     def _render_text(self, text: Text) -> str:
         """Apply the color policy: plain when disabled, ANSI otherwise.
 
@@ -204,7 +235,9 @@ class Console:
             yield from renderable.__rich_console__(self, options or self.options)
 
         elif isinstance(renderable, str):
-            yield Segment(renderable)
+            yield from self._str_to_text(renderable).__rich_console__(
+                self, options or self.options
+            )
 
         elif hasattr(renderable, RICH_PROTOCOL):
             opts = options or self.options
@@ -311,6 +344,7 @@ class Console:
         sep: str = " ",
         end: str = "\n",
         style: str | Style | None = None,
+        markup: bool | None = None,
     ) -> None:
         """Print the given objects to the console, applying the given style if provided.
 
@@ -319,21 +353,35 @@ class Console:
             sep: The separator between objects.
             end: The end-of-line character.
             style: The style to apply to the objects.
+            markup: Per-call override for markup parsing; falls back to the
+                console default when None.
         """
         if style is not None and not isinstance(style, Style):
             style = Style.parse(style)
 
-        # Fast path: single plain string — cache the final bytes keyed on content + style
+        # Fast path: single string
         if len(objects) == 1 and isinstance(objects[0], str):
-            key = (objects[0], style._key if style is not None else None, sep, end)
+            text = objects[0]
+            use_markup = self._markup if markup is None else markup
+            key = (
+                text,
+                style._key if style is not None else None,
+                sep,
+                end,
+                use_markup,
+            )
             cached = self._print_cache.get(key)
 
             if cached is None:
-                seg = Segment(objects[0], style)
+                if use_markup and "[" in text:
+                    segs = list(self._str_to_text(text, style)._segments())
+                else:
+                    segs = [Segment(text, style)]
+
                 no_color, encoding = self.no_color, self.encoding
                 lines = [
                     encode_line(tuple(line), no_color, encoding)
-                    for line in split_lines([seg])
+                    for line in split_lines(segs)
                 ]
 
                 cached = b"\n".join(lines) + end.encode(encoding)
@@ -347,8 +395,8 @@ class Console:
             if i:
                 segments.append(Segment(sep))
 
-            if style is not None and isinstance(obj, str):
-                segments.append(Segment(obj, style))
+            if isinstance(obj, str):
+                segments.extend(self._str_to_text(obj, style, markup)._segments())
 
             else:
                 segments.extend(self.render(obj))

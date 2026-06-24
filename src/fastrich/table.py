@@ -65,7 +65,7 @@ class Table:
 
     def __init__(
         self,
-        *headers,
+        *headers: str,
         box: Box = SQUARE,
         padding: int = 1,
         show_header: bool = True,
@@ -74,7 +74,7 @@ class Table:
     ) -> None:
         """Initialise a Table with optional headers and styling."""
         self.columns: list[Column] = []
-        self.rows: list[list[Text]] = []
+        self.rows: list[list[str | Text]] = []
         self.box: Box = box
         self.padding = padding
         self.show_header = show_header
@@ -116,22 +116,54 @@ class Table:
                 f"row has {len(cells)} cells but table has {len(self.columns)} columns"
             )
 
-        row = [c if isinstance(c, Text) else Text(str(c)) for c in cells]
-        row.extend(Text("") for _ in range(len(self.columns) - len(row)))
+        row: list[str | Text] = list(cells)
+        row.extend("" for _ in range(len(self.columns) - len(row)))
         self.rows.append(row)
 
         return self
 
-    def _natural_widths(self) -> list[int]:
+    def _to_text(self, cell: str | Text, console: Console) -> Text:
+        """Resolve a cell to a Text, parsing console markup in strings.
+
+        Deferred to render time so the console's markup policy applies; bare
+        strings would otherwise keep their tag characters literally.
+
+        Args:
+            cell: The cell value, a string or an already-built Text.
+            console: The console whose markup policy applies.
+
+        Returns:
+            The resolved Text.
+        """
+        if isinstance(cell, Text):
+            return cell
+
+        return console._str_to_text(str(cell))
+
+    def _resolve(self, console: Console) -> tuple[list[Text], list[list[Text]]]:
+        """Resolve headers and rows to Text grids for one render.
+
+        Args:
+            console: The console whose markup policy applies.
+
+        Returns:
+            The resolved header texts and row text grids.
+        """
+        headers = [self._to_text(col.header, console) for col in self.columns]
+        rows = [[self._to_text(cell, console) for cell in row] for row in self.rows]
+
+        return headers, rows
+
+    def _natural_widths(self, headers: list[Text], rows: list[list[Text]]) -> list[int]:
         widths = []
         for i, col in enumerate(self.columns):
-            w = cell_len(col.header) if self.show_header else 0
+            w = cell_len(headers[i].plain) if self.show_header else 0
 
             if col.min_width:
                 w = max(w, col.min_width)
 
-            for row in self.rows:
-                w = max(w, row[i].cell_len)
+            for row in rows:
+                w = max(w, cell_len(row[i].plain))
 
             if col.max_width:
                 w = min(w, col.max_width)
@@ -185,8 +217,9 @@ class Table:
         if ncols == 0:
             return Measurement(0, 0)
 
+        headers, rows = self._resolve(console)
         overhead = (ncols + 1) + 2 * self.padding * ncols
-        maximum = sum(self._natural_widths()) + overhead
+        maximum = sum(self._natural_widths(headers, rows)) + overhead
         minimum = ncols + overhead  # One column per cell
 
         return Measurement(minimum, maximum)
@@ -207,8 +240,9 @@ class Table:
         if ncols == 0:
             return
 
+        headers, rows = self._resolve(console)
         pad = self.padding
-        widths = self._natural_widths()
+        widths = self._natural_widths(headers, rows)
         overhead = (ncols + 1) + 2 * pad * ncols
         widths = self._fit_to(widths, options.max_width - overhead)
 
@@ -283,11 +317,11 @@ class Table:
         yield _NEWLINE
 
         if self.show_header:
-            yield from emit_row([Text(c.header) for c in self.columns], header=True)
+            yield from emit_row(headers, header=True)
             yield from hrule(b.head_left, b.head, b.head_divider, b.head_right)
             yield _NEWLINE
 
-        for row in self.rows:
+        for row in rows:
             yield from emit_row(row, header=False)
 
         yield from hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right)
