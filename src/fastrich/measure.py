@@ -104,7 +104,7 @@ def measure(console: Console, renderable, options: ConsoleOptions) -> Measuremen
     if hasattr(renderable, RICH_MEASURE):
         m = getattr(renderable, RICH_MEASURE)(console, options)
 
-        return m.with_maximum(width).normalize()
+        return m.with_maximum(width).normalise()
 
     # Fallback: render and measure the widest produced line
     from .segment import split_lines

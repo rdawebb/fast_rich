@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .measure import Measurement
     from .style import Style
 
 from ._width import cell_len
@@ -43,6 +44,45 @@ class Panel:
         self.title_style = title_style
         self.padding = padding
         self.width = width
+
+    def __rich_measure__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Measurement:
+        """Measure the panel's width and height.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+
+        Returns:
+            The measured width and height of the panel.
+        """
+        from .measure import Measurement, measure
+
+        _, h_right, _, h_left = self._padding4()
+        inner = measure(
+            console,
+            self.renderable,
+            options._replace(
+                max_width=max(0, options.max_width - 2 - h_left - h_right)
+            ),
+        )
+
+        extra = 2 + h_left + h_right
+        if self.width is not None:
+            return Measurement(self.width, self.width)
+
+        return Measurement(inner.minimum + extra, inner.maximum + extra)
+
+    def _padding4(self) -> tuple[int, int, int, int]:
+        """Normalise the padding to a (top, right, bottom, left) tuple.
+
+        Returns:
+            A (top, right, bottom, left) tuple.
+        """
+        from .padding import _normalise
+
+        return _normalise(self.padding)
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions

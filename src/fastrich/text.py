@@ -7,7 +7,12 @@ at span boundaries and resolves the effective style per interval.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from .console import Console, ConsoleOptions
+    from .measure import Measurement
+    from .segment import Segment
 
 from ._width import cell_len
 from .style import NULL_STYLE, Style
@@ -166,6 +171,28 @@ class Text:
         """
         yield from self._segments()
 
+    def __rich_measure__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Measurement:
+        """Minimum = longest word, maximum = longest line.
+
+        Args:
+            console: The Rich console object.
+            options: The Rich console options.
+
+        Returns:
+            A Measurement of the minimum and maximum width of the text.
+        """
+        from .measure import Measurement
+
+        lines = self.plain.split("\n")
+        maximum = max((cell_len(line) for line in lines), default=0)
+        minimum = max(
+            (cell_len(word) for line in lines for word in line.split(" ")), default=0
+        )
+
+        return Measurement(minimum, maximum)
+
     def render_bytes(self, encoding: str = "utf-8") -> bytes:
         """Render the text to bytes, caching per encoding.
 
@@ -195,7 +222,9 @@ class Text:
         """
         return self.render_bytes().decode("utf-8")
 
-    def render_lines(self, width, justify="left", overflow="fold", base_style=None):
+    def render_lines(
+        self, width: int, justify: str = "left", overflow: str = "fold", base_style=None
+    ) -> list[list[Segment]]:
         """Render to a list of lines (each a list of Segments), fitted to width.
 
         Uses the same boundary-based interval resolution as `_segments`, so a
@@ -256,7 +285,7 @@ class Text:
 
             return out
 
-        def line(start: int, end: int, ellipsis=False) -> list[Segment]:
+        def line(start: int, end: int, ellipsis: bool = False) -> list[Segment]:
             """Return a line of text as a list of segments, with optional ellipsis and padding.
 
             Args:

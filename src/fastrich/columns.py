@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
+from .measure import measure
 from .segment import Segment, split_lines
 
 _NEWLINE = Segment("\n")
@@ -99,17 +100,18 @@ class Columns:
         avail = options.max_width
         gutter = self.padding
 
-        rendered = []
-        for it in items:
-            lines = list(split_lines(list(console.render(it, options))))
-            w = max((sum(cell_len(s.text) for s in line) for line in lines), default=0)
-            rendered.append((lines, w))
-
-        col_w = self.width or max(w for _, w in rendered)
-        col_w = max(1, min(col_w, avail))
+        natural = self.width or max(
+            (measure(console, it, options).maximum for it in items), default=1
+        )
+        col_w = max(1, min(natural, avail))
         ncols = max(1, (avail + gutter) // (col_w + gutter))
 
-        cells = [[_fit_line(line, col_w) for line in lines] for lines, _ in rendered]
+        cells = []
+        for it in items:
+            lines = list(
+                split_lines(list(console.render(it, options._replace(max_width=col_w))))
+            )
+            cells.append([_fit_line(line, col_w) for line in lines])
 
         rows = []
         for base in range(0, len(cells), ncols):

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
+from .measure import measure
 from .segment import Segment, split_lines
 
 _NEWLINE = Segment("\n")
@@ -94,7 +95,14 @@ class Align:
             An iterable of styled segments for the aligned renderable.
         """
         width = options.max_width
-        lines = list(split_lines(list(console.render(self.renderable, options))))
+        target = max(0, min(measure(console, self.renderable, options).maximum, width))
+        lines = list(
+            split_lines(
+                list(
+                    console.render(self.renderable, options._replace(max_width=target))
+                )
+            )
+        )
         used = [sum(cell_len(s.text) for s in line) for line in lines]
         block = min(max(used, default=0), width)
 

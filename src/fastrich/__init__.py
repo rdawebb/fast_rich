@@ -18,6 +18,9 @@ __all__ = [
     "Panel",
     "Rule",
     "Padding",
+    "Align",
+    "Columns",
+    "Measurement",
     "markup",
 ]
 
@@ -34,6 +37,9 @@ _LAZY = {
     "Panel": "fastrich.panel",
     "Rule": "fastrich.rule",
     "Padding": "fastrich.padding",
+    "Align": "fastrich.align",
+    "Columns": "fastrich.columns",
+    "Measurement": "fastrich.measure",
     "markup": "fastrich.markup",
 }
 

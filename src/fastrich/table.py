@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .measure import Measurement
 
 from ._width import cell_len
 from .box import SQUARE, Box
@@ -166,9 +167,42 @@ class Table:
 
         return scaled
 
+    def __rich_measure__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Measurement:
+        """Measure the minimum and maximum width of the table.
+
+        Args:
+            console: The console to measure in.
+            options: The console options.
+
+        Returns:
+            The minimum and maximum width of the table.
+        """
+        from .measure import Measurement
+
+        ncols = len(self.columns)
+        if ncols == 0:
+            return Measurement(0, 0)
+
+        overhead = (ncols + 1) + 2 * self.padding * ncols
+        maximum = sum(self._natural_widths()) + overhead
+        minimum = ncols + overhead  # One column per cell
+
+        return Measurement(minimum, maximum)
+
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> Iterable[Segment]:
+        """Render the table to the console.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+
+        Yields:
+            Segments representing the table.
+        """
         ncols = len(self.columns)
         if ncols == 0:
             return
@@ -203,12 +237,15 @@ class Table:
 
             return segs
 
-        def emit_row(cell_texts, header: bool) -> Iterable[Segment]:
+        def emit_row(cell_texts: list[Text], header: bool) -> Iterable[Segment]:
             """Emit a row of cells with the given texts and header style.
 
             Args:
                 cell_texts: The texts to display in the row.
                 header: Whether this is a header row.
+
+            Yields:
+                Segments representing the row's cells.
             """
             if header:
                 bases = [c.header_style or self.header_style for c in self.columns]

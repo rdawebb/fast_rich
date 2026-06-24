@@ -15,9 +15,9 @@ dev = [
   "pytest>=9.0.3,<10.0.0",
   "pytest-cov>=7.1.0,<8.0.0",
   "rich>=15.0.0,<16.0.0",
-  "ruff>=0.15.18,<0.16.0",
-  "rust-just>=1.53.0,<2.0.0",
-  "ty>=0.0.52,<1.0.0"
+  "ruff>=0.15.19,<0.16.0",
+  "rust-just>=1.54.0,<2.0.0",
+  "ty>=0.0.53,<1.0.0"
 ]
 
 [tool.uv.build-backend]
@@ -28,12 +28,15 @@ testpaths = ["tests"]
 
 [tool.importlinter]
 root_package = "fastrich"
+exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
-name = "Public render stack is layered (console -> text -> segment -> style)"
+name = "Public render stack: (panel/columns/align/padding/rule/markup → table → console → text → wrap → segment → style → box)"
 type = "layers"
 layers = [
     "panel",
+    "columns",
+    "align",
     "padding",
     "rule",
     "markup",
@@ -41,6 +44,7 @@ layers = [
     "console",
     "text",
     "wrap",
+    "measure",
     "segment",
     "style",
     "box",
