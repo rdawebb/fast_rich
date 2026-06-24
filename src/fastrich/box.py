@@ -11,6 +11,8 @@ from typing import NamedTuple
 
 
 class Box(NamedTuple):
+    """A Box defines the glyphs for three horizontal rules and vertical separators."""
+
     top_left: str
     top: str
     top_divider: str
