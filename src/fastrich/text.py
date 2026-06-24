@@ -64,6 +64,21 @@ class Text:
         """
         return cell_len(self.plain)
 
+    @classmethod
+    def from_markup(cls, markup: str, style: Style | None = None) -> "Text":
+        """Build a Text from console markup.
+
+        Args:
+            markup: The markup string to parse.
+            style: The base style to apply.
+
+        Returns:
+            The parsed Text object.
+        """
+        from .markup import render
+
+        return render(markup, style)
+
     def append(self, text: str, style: Style | None = None) -> "Text":
         """Append text, optionally styled, returning self for chaining.
 

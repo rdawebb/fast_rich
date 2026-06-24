@@ -8,21 +8,33 @@ import importlib
 __all__ = [
     "cell_len",
     "char_width",
-    "Console",
-    "ConsoleOptions",
-    "Segment",
     "Style",
     "Text",
+    "Segment",
+    "Console",
+    "ConsoleOptions",
+    "Table",
+    "box",
+    "Panel",
+    "Rule",
+    "Padding",
+    "markup",
 ]
 
 _LAZY = {
     "cell_len": "fastrich._width",
     "char_width": "fastrich._width",
-    "Console": "fastrich.console",
-    "ConsoleOptions": "fastrich.console",
-    "Segment": "fastrich.segment",
     "Style": "fastrich.style",
     "Text": "fastrich.text",
+    "Segment": "fastrich.segment",
+    "Console": "fastrich.console",
+    "ConsoleOptions": "fastrich.console",
+    "Table": "fastrich.table",
+    "box": "fastrich.box",
+    "Panel": "fastrich.panel",
+    "Rule": "fastrich.rule",
+    "Padding": "fastrich.padding",
+    "markup": "fastrich.markup",
 }
 
 
