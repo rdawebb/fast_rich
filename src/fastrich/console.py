@@ -13,7 +13,7 @@ from .style import Style
 from .text import Text
 
 # A renderable is anything implementing this method, it returns an iterable of
-# child renderables (str / Text / nested renderables).
+# child renderables (str / Text / nested renderables)
 RICH_PROTOCOL = "__rich_console__"
 
 
@@ -85,6 +85,7 @@ class Console:
         fd = self._fileno()
         if fd is None and sys.__stdout__ is not None:
             fd = sys.__stdout__.fileno()
+
         if fd is None:
             return 80, 25
 

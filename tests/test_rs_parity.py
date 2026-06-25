@@ -7,9 +7,9 @@ UNICODE_VERSION matches.
 
 import pytest
 
-rs = pytest.importorskip("fastrich._width._width_rs")
-
 from fastrich._width import _width_py as py
+
+rs = pytest.importorskip("fastrich._width._width_rs")
 
 _SAMPLES = [
     "",
