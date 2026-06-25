@@ -69,6 +69,7 @@ def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
     """Encode one line (a tuple of Segments) to bytes, applying color policy.
 
     Memoised on (line, no_color, encoding): identical lines reuse their bytes.
+    Adjacent segments with equal style are coalesced into a single run.
 
     Args:
         line: A list of `Segment` instances representing the line to encode.
@@ -79,11 +80,22 @@ def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
         The encoded line as bytes.
     """
     if no_color:
-        text = "".join(seg.text for seg in line)
+        return "".join(seg.text for seg in line).encode(encoding)
 
-    else:
-        text = "".join(
-            seg.style.render(seg.text) if seg.style else seg.text for seg in line
-        )
+    out = bytearray()
+    n = len(line)
+    i = 0
+    while i < n:
+        style = line[i].style
+        j = i + 1
+        parts = [line[i].text]
 
-    return text.encode(encoding)
+        while j < n and line[j].style == style:
+            parts.append(line[j].text)
+            j += 1
+
+        text = "".join(parts)
+        out += style.render_bytes(text, encoding) if style else text.encode(encoding)
+        i = j
+
+    return bytes(out)

@@ -242,24 +242,64 @@ def render_module(version, width_ranges, ambiguous_ranges) -> str:
     )
 
 
+def render_rust_module(version, width_ranges, ambiguous_ranges) -> str:
+    """Render the Rust width table as a string.
+
+    Emits the same WIDTH_RANGES / AMBIGUOUS_RANGES the Python table carries, so
+    the Rust accelerator measures from identical data and policy (parity by
+    construction) instead of an external crate's width convention.
+
+    Args:
+        version: The Unicode version string.
+        width_ranges: A list of (lo, hi, width) tuples for width ranges.
+        ambiguous_ranges: A list of (lo, hi) tuples for ambiguous character ranges.
+
+    Returns:
+        The rendered Rust width table source as a string.
+    """
+
+    def fmt3(rs) -> str:
+        """Format (lo, hi, width) tuples as Rust slice entries."""
+        return "\n".join(f"    (0x{lo:04X}, 0x{hi:04X}, {w})," for lo, hi, w in rs)
+
+    def fmt2(rs) -> str:
+        """Format (lo, hi) tuples as Rust slice entries."""
+        return "\n".join(f"    (0x{lo:04X}, 0x{hi:04X})," for lo, hi in rs)
+
+    return (
+        "//! GENERATED FILE — do not edit by hand.\n"
+        "//!\n"
+        "//! Produced by scripts/gen_width_table.py alongside _width_table.py;\n"
+        "//! the two carry identical data so the Rust and Python width engines\n"
+        "//! agree by construction. Re-run the generator to regenerate both.\n\n"
+        f'pub const UNICODE_VERSION: &str = "{version}";\n\n'
+        "/// (lo, hi, width) for codepoints whose width is not 1, sorted by lo.\n"
+        "pub const WIDTH_RANGES: &[(u32, u32, u8)] = &[\n"
+        + fmt3(width_ranges)
+        + "\n];\n\n"
+        "/// (lo, hi) for East Asian Ambiguous codepoints, sorted by lo.\n"
+        "pub const AMBIGUOUS_RANGES: &[(u32, u32)] = &[\n" + fmt2(ambiguous_ranges) + "\n];\n"
+    )
+
+
 def main() -> None:
-    """Generate the width table module for the given Unicode version."""
+    """Generate the Python and Rust width tables for the given Unicode version."""
+    root = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", default=PINNED_VERSION)
     ap.add_argument(
         "--out",
-        default=str(
-            Path(__file__).resolve().parent.parent
-            / "src"
-            / "fastrich"
-            / "_width"
-            / "_width_table.py"
-        ),
+        default=str(root / "src" / "fastrich" / "_width" / "_width_table.py"),
+    )
+    ap.add_argument(
+        "--rust-out",
+        default=str(root / "rust" / "src" / "width_table.rs"),
     )
     args = ap.parse_args()
 
     print(f"generating width table for Unicode {args.version}", file=sys.stderr)
     width_ranges, ambiguous_ranges = build_tables(args.version)
+
     module = render_module(args.version, width_ranges, ambiguous_ranges)
     Path(args.out).write_text(module, encoding="utf-8")
     print(
@@ -267,6 +307,10 @@ def main() -> None:
         f"{len(ambiguous_ranges)} ambiguous ranges",
         file=sys.stderr,
     )
+
+    rust_module = render_rust_module(args.version, width_ranges, ambiguous_ranges)
+    Path(args.rust_out).write_text(rust_module, encoding="utf-8")
+    print(f"wrote {args.rust_out}: same ranges, Rust source", file=sys.stderr)
 
 
 if __name__ == "__main__":

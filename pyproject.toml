@@ -1,6 +1,6 @@
 [build-system]
-requires = ["uv_build>=0.11.19,<0.12"]
-build-backend = "uv_build"
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "fastrich"
@@ -20,8 +20,10 @@ dev = [
   "ty>=0.0.53,<1.0.0"
 ]
 
-[tool.uv.build-backend]
-module-name = "fastrich"
+[tool.maturin]
+python-source = "src"
+manifest-path = "rust/Cargo.toml"
+module-name = "fastrich._width._width_rs"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
