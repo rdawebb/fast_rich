@@ -16,6 +16,10 @@ from .text import Text
 # child renderables (str / Text / nested renderables)
 RICH_PROTOCOL = "__rich_console__"
 
+# A byte-cacheable renderable implements this method, returning its final
+# encoded bytes (without a trailing end) memoised per render context
+BYTES_PROTOCOL = "__rich_bytes__"
+
 
 class ConsoleOptions(NamedTuple):
     """Options for the Console."""
@@ -389,6 +393,12 @@ class Console:
                 self._print_cache[key] = cached
 
             self._write_bytes(cached)
+            return
+
+        # Fast path: single byte-cacheable renderable (Table, Panel, ...)
+        if len(objects) == 1 and hasattr(objects[0], BYTES_PROTOCOL):
+            body = objects[0].__rich_bytes__(self, self.options)
+            self._write_bytes(body + end.encode(self.encoding))
             return
 
         segments = []

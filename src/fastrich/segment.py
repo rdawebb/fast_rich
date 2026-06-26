@@ -8,10 +8,13 @@ memoised per line, so an unchanged line reuses its bytes instead of re-encoding.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Iterable, NamedTuple, Optional
+from typing import TYPE_CHECKING, Iterable, NamedTuple, Optional
 
 from ._width import cell_len
 from .style import Style
+
+if TYPE_CHECKING:
+    from .console import Console, ConsoleOptions
 
 
 class Segment(NamedTuple):
@@ -99,3 +102,61 @@ def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
         i = j
 
     return bytes(out)
+
+
+class CachedBytes:
+    """Mixin: memoise a renderable's final encoded bytes, keyed by render context.
+
+    Invalidation is by an explicit `_dirty` flag. Subclasses flip it in their
+    documented mutators, out-of-band changes (in-place list mutation, attribute
+    reassignment, or a nested mutable child changing) are not tracked and need a
+    manual `mark_dirty()` call.
+    """
+
+    _dirty: bool
+    _byte_cache: dict
+
+    if TYPE_CHECKING:
+
+        def __rich_console__(
+            self, console: Console, options: ConsoleOptions
+        ) -> Iterable[Segment]:
+            """Subclasses must yield the Segments for this renderable."""
+            ...
+
+    def _init_byte_cache(self) -> None:
+        """Initialise the dirty flag and byte cache, call from `__init__`."""
+        self._dirty = True
+        self._byte_cache = {}
+
+    def mark_dirty(self) -> None:
+        """Invalidate the cached bytes, call after out-of-band mutation."""
+        self._dirty = True
+
+    def __rich_bytes__(self, console: Console, options: ConsoleOptions) -> bytes:
+        """Return the encoded bytes for this renderable, without a trailing end.
+
+        Args:
+            console: The console to render to.
+            options: The console options for this render.
+
+        Returns:
+            The rendered bytes, memoised per render context.
+        """
+        if self._dirty:
+            self._byte_cache.clear()
+            self._dirty = False
+
+        no_color, encoding = console.no_color, console.encoding
+        key = (options.max_width, no_color, encoding, console._markup)
+        cached = self._byte_cache.get(key)
+
+        if cached is None:
+            cached = b"\n".join(
+                encode_line(tuple(line), no_color, encoding)
+                for line in split_lines(self.__rich_console__(console, options))
+            )
+
+            self._byte_cache[key] = cached
+
+        return cached

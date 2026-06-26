@@ -17,13 +17,18 @@ if TYPE_CHECKING:
 from ._width import cell_len
 from .box import SQUARE
 from .padding import Padding
-from .segment import Segment, split_lines
+from .segment import CachedBytes, Segment, split_lines
 
 _NEWLINE = Segment("\n")
 
 
-class Panel:
-    """Frame a renderable in a box, with optional title in the top rule."""
+class Panel(CachedBytes):
+    """Frame a renderable in a box, with optional title in the top rule.
+
+    Cached bytes assume the panel and its child renderable are stable after
+    construction. Reassigning an attribute (e.g. `panel.renderable`) or
+    mutating a nested child is not tracked, call `mark_dirty()` afterwards.
+    """
 
     def __init__(
         self,
@@ -36,7 +41,18 @@ class Panel:
         padding: tuple[int, int] = (0, 1),
         width: int | None = None,
     ) -> None:
-        """Initialise a Panel with the given renderable and optional title."""
+        """Initialise a Panel with the given renderable and optional title.
+
+        Args:
+            renderable: The renderable to frame in the panel.
+            box: The box to use for the panel's border.
+            title: The title to display in the top rule.
+            border_style: The style to use for the panel's border.
+            title_style: The style to use for the panel's title.
+            padding: The padding to apply around the panel.
+            width: The width of the panel, or `None` for automatic width.
+        """
+        self._init_byte_cache()
         self.renderable = renderable
         self.box = box
         self.title = title
