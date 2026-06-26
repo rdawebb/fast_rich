@@ -16,11 +16,54 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .box import SQUARE, Box
-from .segment import Segment
+from .segment import CachedBytes, Segment
 from .style import Style
 from .text import Text
 
 _NEWLINE = Segment("\n")
+
+
+def _cell_plain(cell: "str | Text") -> str:
+    """Return the plain text of a resolved cell (str stays as-is)."""
+    return cell if isinstance(cell, str) else cell.plain
+
+
+def _plain_line(
+    text: str, width: int, justify: str, base: "Style | None"
+) -> "list[Segment]":
+    """Lay out one plain (span-free) cell line: a styled run plus padding.
+
+    Byte-for-byte equivalent to `Text.render_lines` for a single line that
+    fits its width with no spans and no ellipsis: the content is one run under
+    the column's base style, justify padding is unstyled, and an empty cell
+    yields no content segment (only padding), matching `range_segments`.
+
+    Args:
+        text: The cell's plain text (already known to fit `width`).
+        width: The column content width.
+        justify: How to justify within the column ("left", "center", "right").
+        base: The column base style, or None.
+
+    Returns:
+        The line's segments.
+    """
+    style = base if base else None
+    segs = [Segment(text, style)] if text else []
+
+    pad = width - cell_len(text)
+    if pad > 0:
+        if justify == "right":
+            segs.insert(0, Segment(" " * pad))
+
+        elif justify == "center":
+            left = pad // 2
+            segs.insert(0, Segment(" " * left))
+            segs.append(Segment(" " * (pad - left)))
+
+        else:
+            segs.append(Segment(" " * pad))
+
+    return segs
 
 
 class Column:
@@ -49,7 +92,18 @@ class Column:
         overflow: str = "ellipsis",
         no_wrap: bool = False,
     ) -> None:
-        """Initialise a Column."""
+        """Initialise a Column.
+
+        Args:
+            header: The column header text.
+            justify: How to justify the column content.
+            style: The column content style.
+            header_style: The column header style.
+            min_width: The minimum width of the column.
+            max_width: The maximum width of the column.
+            overflow: How to handle overflowing content.
+            no_wrap: Whether to disable wrapping of content.
+        """
         self.header = header
         self.justify = justify
         self.style = style
@@ -60,7 +114,7 @@ class Column:
         self.no_wrap = no_wrap
 
 
-class Table:
+class Table(CachedBytes):
     """A table that displays data in rows and columns."""
 
     def __init__(
@@ -72,7 +126,17 @@ class Table:
         header_style: Style | None = None,
         border_style: Style | None = None,
     ) -> None:
-        """Initialise a Table with optional headers and styling."""
+        """Initialise a Table with optional headers and styling.
+
+        Args:
+            *headers: The column headers as strings.
+            box: The box style for the table.
+            padding: The padding around the table.
+            show_header: Whether to show the header row.
+            header_style: The style for the header row.
+            border_style: The style for the table border.
+        """
+        self._init_byte_cache()
         self.columns: list[Column] = []
         self.rows: list[list[str | Text]] = []
         self.box: Box = box
@@ -96,6 +160,7 @@ class Table:
             The Table instance.
         """
         self.columns.append(Column(header, **kwargs))
+        self._dirty = True
 
         return self
 
@@ -119,51 +184,66 @@ class Table:
         row: list[str | Text] = list(cells)
         row.extend("" for _ in range(len(self.columns) - len(row)))
         self.rows.append(row)
+        self._dirty = True
 
         return self
 
-    def _to_text(self, cell: str | Text, console: Console) -> Text:
-        """Resolve a cell to a Text, parsing console markup in strings.
+    def _to_cell(self, cell: str | Text, console: Console) -> str | Text:
+        """Resolve a cell for one render, keeping plain strings as `str`.
 
-        Deferred to render time so the console's markup policy applies; bare
-        strings would otherwise keep their tag characters literally.
+        Only cells that need span handling become `Text`: an already-built
+        `Text`, or a string carrying markup under the console's markup policy.
+        Plain strings stay strings so the common case skips Text/Segment
+        allocation in `emit_row`. Deferred to render time so the console's
+        markup policy applies.
 
         Args:
             cell: The cell value, a string or an already-built Text.
             console: The console whose markup policy applies.
 
         Returns:
-            The resolved Text.
+            The resolved cell: a plain `str`, or a `Text` for markup/Text cells.
         """
         if isinstance(cell, Text):
             return cell
 
-        return console._str_to_text(str(cell))
+        s = cell if type(cell) is str else str(cell)
+        if console._markup and "[" in s:
+            return console._str_to_text(s)
 
-    def _resolve(self, console: Console) -> tuple[list[Text], list[list[Text]]]:
-        """Resolve headers and rows to Text grids for one render.
+        return s
+
+    def _resolve(
+        self, console: Console
+    ) -> tuple[list[str | Text], list[list[str | Text]]]:
+        """Resolve headers and rows to cell grids for one render.
+
+        Plain strings are preserved as `str`; only markup/`Text` cells become
+        `Text` (see `_to_cell`).
 
         Args:
             console: The console whose markup policy applies.
 
         Returns:
-            The resolved header texts and row text grids.
+            The resolved header and row cell grids.
         """
-        headers = [self._to_text(col.header, console) for col in self.columns]
-        rows = [[self._to_text(cell, console) for cell in row] for row in self.rows]
+        headers = [self._to_cell(col.header, console) for col in self.columns]
+        rows = [[self._to_cell(cell, console) for cell in row] for row in self.rows]
 
         return headers, rows
 
-    def _natural_widths(self, headers: list[Text], rows: list[list[Text]]) -> list[int]:
+    def _natural_widths(
+        self, headers: list[str | Text], rows: list[list[str | Text]]
+    ) -> list[int]:
         widths = []
         for i, col in enumerate(self.columns):
-            w = cell_len(headers[i].plain) if self.show_header else 0
+            w = cell_len(_cell_plain(headers[i])) if self.show_header else 0
 
             if col.min_width:
                 w = max(w, col.min_width)
 
             for row in rows:
-                w = max(w, cell_len(row[i].plain))
+                w = max(w, cell_len(_cell_plain(row[i])))
 
             if col.max_width:
                 w = min(w, col.max_width)
@@ -271,11 +351,11 @@ class Table:
 
             return segs
 
-        def emit_row(cell_texts: list[Text], header: bool) -> Iterable[Segment]:
+        def emit_row(cell_texts: list[str | Text], header: bool) -> Iterable[Segment]:
             """Emit a row of cells with the given texts and header style.
 
             Args:
-                cell_texts: The texts to display in the row.
+                cell_texts: The cells to display in the row (str or Text).
                 header: Whether this is a header row.
 
             Yields:
@@ -286,10 +366,23 @@ class Table:
             else:
                 bases = [c.style for c in self.columns]
 
-            cell_lines = [
-                text.render_lines(w, col.justify, col.overflow, base)
-                for text, w, col, base in zip(cell_texts, widths, self.columns, bases)
-            ]
+            cell_lines = []
+            for cell, w, col, base in zip(cell_texts, widths, self.columns, bases):
+                # Fast lane: a plain string that fits its column on one line
+                # needs no Text/span machinery, just a single styled run + pad.
+                if (
+                    isinstance(cell, str)
+                    and col.overflow != "fold"
+                    and "\n" not in cell
+                    and cell_len(cell) <= w
+                ):
+                    cell_lines.append([_plain_line(cell, w, col.justify, base)])
+                else:
+                    text = cell if isinstance(cell, Text) else Text(cell)
+                    cell_lines.append(
+                        text.render_lines(w, col.justify, col.overflow, base)
+                    )
+
             height = max(len(cl) for cl in cell_lines)
 
             for li in range(height):
