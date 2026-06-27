@@ -7,6 +7,7 @@ memoised per line, so an unchanged line reuses its bytes instead of re-encoding.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from functools import lru_cache
 from typing import TYPE_CHECKING, Iterable, NamedTuple, Optional
 
@@ -114,7 +115,7 @@ class CachedBytes:
     """
 
     _dirty: bool
-    _byte_cache: dict
+    _max_byte_contexts: int = 8
 
     if TYPE_CHECKING:
 
@@ -127,11 +128,17 @@ class CachedBytes:
     def _init_byte_cache(self) -> None:
         """Initialise the dirty flag and byte cache, call from `__init__`."""
         self._dirty = True
-        self._byte_cache = {}
+        self._byte_cache = OrderedDict()
 
     def mark_dirty(self) -> None:
-        """Invalidate the cached bytes, call after out-of-band mutation."""
+        """Invalidate the cached bytes and subclass-derived caches, call after
+        out-of-band mutation."""
         self._dirty = True
+        self._on_mark_dirty()
+
+    def _on_mark_dirty(self) -> None:
+        """Hook for subclasses to drop caches derived beyond `_byte_cache`."""
+        pass
 
     def __rich_bytes__(self, console: Console, options: ConsoleOptions) -> bytes:
         """Return the encoded bytes for this renderable, without a trailing end.
@@ -149,14 +156,19 @@ class CachedBytes:
 
         no_color, encoding = console.no_color, console.encoding
         key = (options.max_width, no_color, encoding, console._markup)
-        cached = self._byte_cache.get(key)
+        cache = self._byte_cache
 
-        if cached is None:
-            cached = b"\n".join(
-                encode_line(tuple(line), no_color, encoding)
-                for line in split_lines(self.__rich_console__(console, options))
-            )
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return cached
 
-            self._byte_cache[key] = cached
+        cached = b"\n".join(
+            encode_line(tuple(line), no_color, encoding)
+            for line in split_lines(self.__rich_console__(console, options))
+        )
+        cache[key] = cached
+        if len(cache) > self._max_byte_contexts:
+            cache.popitem(last=False)
 
         return cached

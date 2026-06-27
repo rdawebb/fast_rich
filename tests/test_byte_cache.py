@@ -83,6 +83,28 @@ def test_invalidation_on_add_column() -> None:
     assert after == _pipeline_bytes(c, t)
 
 
+def test_invalidation_on_update_cell() -> None:
+    """update_cell() rebuilds the cache and reflects the new value."""
+    c = _color_console()
+    t = _sample_table()
+    before = t.__rich_bytes__(c, c.options)
+    t.update_cell(0, 0, "Alicia")
+    after = t.__rich_bytes__(c, c.options)
+    assert after != before
+    assert after == _pipeline_bytes(c, t)
+
+
+def test_update_cell_out_of_range() -> None:
+    """update_cell() rejects row/column indices outside the table."""
+    import pytest
+
+    t = _sample_table()
+    with pytest.raises(IndexError):
+        t.update_cell(5, 0, "x")
+    with pytest.raises(IndexError):
+        t.update_cell(0, 5, "x")
+
+
 def test_mark_dirty_forces_rebuild() -> None:
     """mark_dirty() drops the cache so out-of-band mutation is picked up."""
     c = _color_console()
@@ -98,13 +120,17 @@ def test_mark_dirty_forces_rebuild() -> None:
 
 
 def test_context_sensitivity_width() -> None:
-    """Different max_width yields distinct cache entries and output."""
+    """A new max_width is cached independently and changes the output."""
     c = _color_console()
     t = _sample_table()
     wide = t.__rich_bytes__(c, c.options._replace(max_width=80))
     narrow = t.__rich_bytes__(c, c.options._replace(max_width=12))
     assert wide != narrow
-    assert len(t._byte_cache) == 2
+
+    # Multi-slot LRU cache: both widths stay resident, so re-rendering at the
+    # old width is a hit that returns the very same cached bytes object.
+    rewide = t.__rich_bytes__(c, c.options._replace(max_width=80))
+    assert rewide is wide
 
 
 def test_print_fast_path_matches_repeated_calls() -> None:
