@@ -8,16 +8,14 @@ preserving).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
 from .measure import measure
-from .segment import Segment, split_lines
-
-_NEWLINE = Segment("\n")
+from .segment import LineRenderable, Segment
 
 
 def _fit_line(line: list[Segment], width: int) -> list[Segment]:
@@ -64,7 +62,7 @@ def _fit_line(line: list[Segment], width: int) -> list[Segment]:
     return out
 
 
-class Columns:
+class Columns(LineRenderable):
     """Layout renderables into columns."""
 
     def __init__(
@@ -81,21 +79,19 @@ class Columns:
         self.padding = padding
         self.width = width  # Fixed column width override
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Layout the renderables into columns.
 
         Args:
             console: The console to render to.
             options: The console options.
 
-        Yields:
-            The segments representing the layout.
+        Returns:
+            A list of rows, each row is a list of segments.
         """
         items = self.renderables
         if not items:
-            return
+            return []
 
         avail = options.max_width
         gutter = self.padding
@@ -108,9 +104,7 @@ class Columns:
 
         cells = []
         for it in items:
-            lines = list(
-                split_lines(list(console.render(it, options._replace(max_width=col_w))))
-            )
+            lines = console.render_lines(it, options._replace(max_width=col_w))
             cells.append([_fit_line(line, col_w) for line in lines])
 
         rows = []
@@ -131,8 +125,4 @@ class Columns:
 
                 rows.append(row)
 
-        for i, row in enumerate(rows):
-            if i:
-                yield _NEWLINE
-
-            yield from row
+        return rows

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
-from .segment import Segment
+from .segment import LineRenderable, Segment
 
 
 def _tile(chars: str, width: int) -> str:
@@ -40,7 +40,7 @@ def _tile(chars: str, width: int) -> str:
     return out
 
 
-class Rule:
+class Rule(LineRenderable):
     """A horizontal rule that spans the width of the terminal."""
 
     def __init__(
@@ -59,9 +59,7 @@ class Rule:
         self.style = style
         self.title_style = title_style
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the rule as a series of styled segments.
 
         Args:
@@ -73,20 +71,21 @@ class Rule:
         """
         width = options.max_width
         title = self.title.plain if hasattr(self.title, "plain") else str(self.title)
-
         if not title:
-            yield Segment(_tile(self.characters, width), self.style)
-            return
+            return [[Segment(_tile(self.characters, width), self.style)]]
 
         label = f" {title} "
         tlen = cell_len(label)
         if tlen >= width:
-            yield Segment(_tile(self.characters, width), self.style)
-            return
+            return [[Segment(_tile(self.characters, width), self.style)]]
 
         side = width - tlen
         left = side // 2
 
-        yield Segment(_tile(self.characters, left), self.style)
-        yield Segment(label, self.title_style)
-        yield Segment(_tile(self.characters, side - left), self.style)
+        return [
+            [
+                Segment(_tile(self.characters, left), self.style),
+                Segment(label, self.title_style),
+                Segment(_tile(self.characters, side - left), self.style),
+            ]
+        ]

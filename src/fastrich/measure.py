@@ -24,7 +24,7 @@ class Measurement(NamedTuple):
     minimum: int
     maximum: int
 
-    def normalise(self) -> "Measurement":
+    def normalise(self) -> Measurement:
         """Normalise measurement with minimum >= 0 and minimum <= maximum.
 
         Returns:
@@ -34,7 +34,7 @@ class Measurement(NamedTuple):
 
         return Measurement(minimum, max(minimum, self.maximum))
 
-    def with_maximum(self, width: int) -> "Measurement":
+    def with_maximum(self, width: int) -> Measurement:
         """Measure with the maximum width clamped to the given width.
 
         Args:
@@ -45,7 +45,7 @@ class Measurement(NamedTuple):
         """
         return Measurement(min(self.minimum, width), min(self.maximum, width))
 
-    def clamp(self, min_width=None, max_width=None) -> "Measurement":
+    def clamp(self, min_width=None, max_width=None) -> Measurement:
         """Clamp the measurement to the given minimum and maximum width.
 
         Args:
@@ -107,9 +107,8 @@ def measure(console: Console, renderable, options: ConsoleOptions) -> Measuremen
         return m.with_maximum(width).normalise()
 
     # Fallback: render and measure the widest produced line
-    from .segment import split_lines
 
-    lines = list(split_lines(list(console.render(renderable, options))))
+    lines = list((console.render_lines(renderable, options)))
     mx = max((sum(cell_len(s.text) for s in line) for line in lines), default=0)
 
     return Measurement(min(mx, width), min(mx, width))

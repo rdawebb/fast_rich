@@ -119,6 +119,44 @@ def test_mark_dirty_forces_rebuild() -> None:
     assert fresh != first
 
 
+def test_mark_dirty_after_in_place_row_removal() -> None:
+    """mark_dirty() picks up rows removed directly on `self.rows`."""
+    c = _color_console()
+    t = _sample_table()
+    full = t.__rich_bytes__(c, c.options)
+    del t.rows[0]  # in-place removal bypasses the tracked mutators
+    t.mark_dirty()
+    fresh = t.__rich_bytes__(c, c.options)
+    assert fresh == _pipeline_bytes(c, t)
+    assert fresh != full
+
+
+def test_mark_dirty_resyncs_per_row_arrays() -> None:
+    """mark_dirty() keeps the parallel per-row arrays matched to `self.rows`.
+
+    Regression: an in-place append left ``_row_versions`` short of ``_row_cache``
+    (resized by mark_dirty), so the next render indexed it past its end and
+    raised IndexError. Both arrays must track the live row count.
+    """
+    c = _color_console()
+    t = _sample_table()
+    t.__rich_bytes__(c, c.options)
+
+    t.rows.append(["Dan", "7"])
+    t.rows.append(["Eve", "9"])
+    t.mark_dirty()
+    assert len(t._row_versions) == len(t.rows)
+    assert len(t._row_cache) == len(t.rows)
+    # Render must not raise and must reflect the appended rows.
+    assert t.__rich_bytes__(c, c.options) == _pipeline_bytes(c, t)
+
+    del t.rows[1:]
+    t.mark_dirty()
+    assert len(t._row_versions) == len(t.rows)
+    assert len(t._row_cache) == len(t.rows)
+    assert t.__rich_bytes__(c, c.options) == _pipeline_bytes(c, t)
+
+
 def test_context_sensitivity_width() -> None:
     """A new max_width is cached independently and changes the output."""
     c = _color_console()

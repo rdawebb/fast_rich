@@ -253,6 +253,25 @@ class Console:
         else:
             yield Segment(str(renderable))
 
+    def render_lines(
+        self, renderable, options: ConsoleOptions | None = None
+    ) -> list[list[Segment]]:
+        """Return a renderable's output as physical lines.
+
+        Args:
+            renderable: The renderable to render.
+            options: The console options to use.
+
+        Returns:
+            A list of lists of segments, where each inner list represents a line.
+        """
+        opts = options or self.options
+        fn = getattr(renderable, "__rich_lines__", None)
+        if fn is not None:
+            return fn(self, opts)  # Cached list-of-lists, no copy
+
+        return list(split_lines(self.render(renderable, opts)))
+
     def render_str(self, renderable) -> str:
         """Render the given renderable as a string, applying color policy if enabled.
 
@@ -395,10 +414,20 @@ class Console:
             self._write_bytes(cached)
             return
 
-        # Fast path: single byte-cacheable renderable (Table, Panel, ...)
+        # Fast path: single byte-cacheable renderable
         if len(objects) == 1 and hasattr(objects[0], BYTES_PROTOCOL):
             body = objects[0].__rich_bytes__(self, self.options)
             self._write_bytes(body + end.encode(self.encoding))
+            return
+
+        # Fast path: single line-renderable renderable
+        if len(objects) == 1 and hasattr(objects[0], "__rich_lines__"):
+            no_color, encoding = self.no_color, self.encoding
+            lines = [
+                encode_line(tuple(line), no_color, encoding)
+                for line in self.render_lines(objects[0])
+            ]
+            self._write_bytes(b"\n".join(lines) + end.encode(encoding))
             return
 
         segments = []

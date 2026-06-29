@@ -8,16 +8,14 @@ rectangular for nesting.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 
 from ._width import cell_len
-from .segment import Segment, split_lines
-
-_NEWLINE = Segment("\n")
+from .segment import LineRenderable, Segment
 
 
 def _normalise(
@@ -44,7 +42,7 @@ def _normalise(
     raise ValueError("pad must be int, (v, h), or (top, right, bottom, left)")
 
 
-class Padding:
+class Padding(LineRenderable):
     """A wrapper around a renderable that adds padding around it."""
 
     def __init__(self, renderable, pad=(0, 1)) -> None:
@@ -57,26 +55,22 @@ class Padding:
         self.renderable = renderable
         self.pad = _normalise(pad)
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the wrapped renderable with padding around it.
 
         Args:
             console: The console to render to.
             options: The console options.
 
-        Yields:
-            The styled segments for the padded renderable.
+        Returns:
+            The padded lines as a list of lists of segments.
         """
         top, right, bottom, left = self.pad
         full = options.max_width
         inner = max(0, full - left - right)
 
-        child_lines = list(
-            split_lines(
-                list(console.render(self.renderable, options._replace(max_width=inner)))
-            )
+        child_lines = console.render_lines(
+            self.renderable, options._replace(max_width=inner)
         )
 
         rows = []
@@ -86,14 +80,11 @@ class Padding:
 
         for line in child_lines:
             used = sum(cell_len(seg.text) for seg in line)
-            row = [Segment(" " * left), *line, Segment(" " * (inner - used + right))]
-            rows.append(row)
+            rows.append(
+                [Segment(" " * left), *line, Segment(" " * (inner - used + right))]
+            )
 
         for _ in range(bottom):
             rows.append(blank)
 
-        for i, row in enumerate(rows):
-            if i:
-                yield _NEWLINE
-
-            yield from row
+        return rows

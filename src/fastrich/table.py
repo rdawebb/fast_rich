@@ -8,7 +8,7 @@ width, columns shrink proportionally.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING, Iterable, NamedTuple, Sequence
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -71,6 +71,48 @@ def _plain_line(
             segs.append(Segment(" " * pad))
 
     return segs
+
+
+class _RowFrame(NamedTuple):
+    """Per-render constant Segments shared across every row of one render."""
+
+    left: Segment  # left border glyph
+    divider: Segment  # inter-column border glyph
+    right: Segment  # right border glyph
+    pads: list[Segment]  # per column: one cell-pad Segment, used both sides
+    blanks: list[Segment]  # per column: a full-width blank for a short cell
+
+
+def _row_frame(
+    box: Box, bs: Style | None, widths: list[int], bases, pad: int
+) -> _RowFrame:
+    """Build the shared border/padding Segments for one render's rows.
+
+    Args:
+        box: The box drawing glyphs.
+        bs: The border style.
+        widths: The resolved column content widths.
+        bases: The per-column base style.
+        pad: The cell padding width.
+
+    Returns:
+        The reusable border and padding Segments for the render.
+    """
+    pad_str = " " * pad
+    pads = []
+    blanks = []
+    for w, base in zip(widths, bases):
+        fill = base if base else None
+        pads.append(Segment(pad_str, fill))
+        blanks.append(Segment(" " * (w + 2 * pad), fill))
+
+    return _RowFrame(
+        Segment(box.left, bs),
+        Segment(box.divider, bs),
+        Segment(box.right, bs),
+        pads,
+        blanks,
+    )
 
 
 class Column:
@@ -173,15 +215,12 @@ class Table(CachedBytes):
         self._resolved = None  # Resolve + natural-width cache
 
     def _on_mark_dirty(self) -> None:
-        """Invalidate the resolve/width cache for the out-of-bound path.
-
-        Out-of-band mutation may have resized `rows` directly, so resync both
-        parallel arrays to the current row count, not just `_row_cache`.
-        """
+        """Invalidate the cache for the out-of-band path."""
         self._content_version += 1
         self._resolved = None
-        self._row_versions = [0] * len(self.rows)
-        self._row_cache = [None] * len(self.rows)
+        n = len(self.rows)
+        self._row_versions = [0] * n
+        self._row_cache = [None] * n
 
     def add_column(self, header: str = "", **kwargs) -> Table:
         """Add a column to the table with the given header and styling.
@@ -399,6 +438,7 @@ class Table(CachedBytes):
         widths: list[int],
         bases: Sequence[Style | None],
         pad: int,
+        frame: _RowFrame,
     ) -> list[list[Segment]]:
         """Render one row to a list of fully framed physical lines.
 
@@ -407,14 +447,12 @@ class Table(CachedBytes):
             widths: The column widths.
             bases: The cell styles.
             pad: The padding.
+            frame: The render's shared border/padding Segments.
 
         Returns:
             The fully framed physical lines of the row.
         """
-        b, bs = self.box, self.border_style
-        pad_str = " " * pad
-
-        cell_lines = []
+        cell_lines = []  # Per cell: list[list[Segment]], content per physical line
         for text, w, col, base in zip(cell_texts, widths, self.columns, bases):
             # Fast lane: plain strings that fit columns on one line
             if (
@@ -431,42 +469,41 @@ class Table(CachedBytes):
 
         height = max((len(cl) for cl in cell_lines), default=1)
 
+        # The borders and cell-padding come from `frame`
+        pads = frame.pads
         out = []
         for li in range(height):
-            line = [Segment(b.left, bs)]
-            for ci, (cl, w, base) in enumerate(zip(cell_lines, widths, bases)):
+            line = [frame.left]
+            for ci, cl in enumerate(cell_lines):
                 if ci:
-                    line.append(Segment(b.divider, bs))
+                    line.append(frame.divider)
 
-                fill = base if base else None
-                line.append(Segment(pad_str, fill))
                 if li < len(cl):
+                    line.append(pads[ci])
                     line.extend(cl[li])
+                    line.append(pads[ci])
 
                 else:
-                    line.append(Segment(" " * w, fill))  # Blank line for short cell
-                line.append(Segment(pad_str, fill))
+                    line.append(frame.blanks[ci])  # Blank line for short cell
 
-            line.append(Segment(b.right, bs))
+            line.append(frame.right)
             out.append(line)
 
         return out
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
-        """Render the table to Segments (runs only on a byte-cache miss).
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
+        """Render the table to a list of fully framed physical lines.
 
         Args:
             console: The console to render to.
             options: The console options.
 
-        Yields:
-            Segments representing the table.
+        Returns:
+            A list of fully framed physical lines.
         """
         ncols = len(self.columns)
         if ncols == 0:
-            return
+            return []
 
         headers, rows, nat = self._resolve(console)
         pad = self.padding
@@ -486,26 +523,32 @@ class Table(CachedBytes):
                 right: The right glyph.
 
             Returns:
-                The horizontal rule as a list of segments.
+                The horizontal rule as a single styled segment.
             """
-            segs = [Segment(left, bs)]
+            parts = [left]
             for i, w in enumerate(widths):
                 if i:
-                    segs.append(Segment(div, bs))
+                    parts.append(div)
 
-                segs.append(Segment(mid * (w + 2 * pad), bs))
-            segs.append(Segment(right, bs))
+                parts.append(mid * (w + 2 * pad))
+            parts.append(right)
 
-            return segs
+            return [Segment("".join(parts), bs)]
 
         lines = [hrule(b.top_left, b.top, b.top_divider, b.top_right)]
 
         if self.show_header:
             header_bases = [c.header_style or self.header_style for c in self.columns]
-            lines.extend(self._framed_row_lines(headers, widths, header_bases, pad))
+            header_frame = _row_frame(b, bs, widths, header_bases, pad)
+            lines.extend(
+                self._framed_row_lines(headers, widths, header_bases, pad, header_frame)
+            )
             lines.append(hrule(b.head_left, b.head, b.head_divider, b.head_right))
 
         body_bases = [c.style for c in self.columns]
+
+        # One shared set of border/padding Segments for every body row
+        body_frame = _row_frame(b, bs, widths, body_bases, pad)
         cache = self._row_cache
         versions = self._row_versions
 
@@ -515,15 +558,45 @@ class Table(CachedBytes):
                 row_lines = entry[2]  # Clean row, reuse segments
 
             else:
-                row_lines = self._framed_row_lines(row, widths, body_bases, pad)
+                row_lines = self._framed_row_lines(
+                    row, widths, body_bases, pad, body_frame
+                )
                 cache[i] = (versions[i], wkey, row_lines)
 
             lines.extend(row_lines)
 
         lines.append(hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right))
 
+        return lines
+
+    def __rich_lines__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[list[Segment]]:
+        """Lines protocol: hand back already-grouped lines (no newline segments).
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+
+        Returns:
+            A list of fully framed physical lines.
+        """
+        return self._lines(console, options)
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Iterable[Segment]:
+        """Flat segment stream for generic composition.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+
+        Yields:
+            Segments representing the table.
+        """
         first = True
-        for line in lines:
+        for line in self._lines(console, options):
             if not first:
                 yield _NEWLINE
 

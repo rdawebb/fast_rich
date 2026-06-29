@@ -105,6 +105,68 @@ def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
     return bytes(out)
 
 
+_NEWLINE = Segment("\n")
+
+
+class LineRenderable:
+    """Mixin for vertically line-grouped renderables.
+
+    A subclass implements `_lines(console, options) -> list[list[Segment]]`,
+    returning physical lines with no newline inside any segment.
+    """
+
+    def _lines(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[list[Segment]]:  # pragma: no cover - interface
+        """Interface for subclasses to implement line-based rendering.
+
+        Args:
+            console: The console to render with.
+            options: The console options.
+
+        Returns:
+            The renderable's lines as a list of lists of segments.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement `_lines`.
+        """
+        raise NotImplementedError
+
+    def __rich_lines__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[list[Segment]]:
+        """Return the renderable's lines as a list of lists of segments.
+
+        Args:
+            console: The console to render with.
+            options: The console options.
+
+        Returns:
+            The renderable's lines as a list of lists of segments.
+        """
+        return self._lines(console, options)
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Iterable[Segment]:
+        """Render the renderable to the console.
+
+        Args:
+            console: The console to render with.
+            options: The console options.
+
+        Yields:
+            An iterable of segments representing the renderable's output.
+        """
+        first = True
+        for line in self._lines(console, options):
+            if not first:
+                yield _NEWLINE
+
+            first = False
+            yield from line
+
+
 class CachedBytes:
     """Mixin: memoise a renderable's final encoded bytes, keyed by render context.
 
@@ -140,6 +202,24 @@ class CachedBytes:
         """Hook for subclasses to drop caches derived beyond `_byte_cache`."""
         pass
 
+    def _iter_lines(
+        self, console: Console, options: ConsoleOptions
+    ) -> Iterable[list[Segment]]:
+        """Return an iterable of lines, each a list of Segments.
+
+        Args:
+            console: The console to render to.
+            options: The console options for this render.
+
+        Returns:
+            An iterable of lines, each a list of Segments.
+        """
+        fn = getattr(self, "__rich_lines__", None)
+        if fn is not None:
+            return fn(console, options)
+
+        return split_lines(self.__rich_console__(console, options))
+
     def __rich_bytes__(self, console: Console, options: ConsoleOptions) -> bytes:
         """Return the encoded bytes for this renderable, without a trailing end.
 
@@ -165,7 +245,7 @@ class CachedBytes:
 
         cached = b"\n".join(
             encode_line(tuple(line), no_color, encoding)
-            for line in split_lines(self.__rich_console__(console, options))
+            for line in self._iter_lines(console, options)
         )
         cache[key] = cached
         if len(cache) > self._max_byte_contexts:

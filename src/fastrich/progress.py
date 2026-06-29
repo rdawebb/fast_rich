@@ -9,7 +9,7 @@ auto-refreshing display lands with Live; the full Rich column set lands later.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -19,10 +19,8 @@ from dataclasses import dataclass, field
 
 from ._width import cell_len
 from .bar import ProgressBar
-from .segment import Segment
+from .segment import LineRenderable, Segment
 from .text import Text
-
-_NEWLINE = Segment("\n")
 
 
 @dataclass
@@ -161,7 +159,7 @@ def default_columns() -> list[Column]:
     return [TextColumn(), BarColumn(), PercentageColumn()]
 
 
-class Progress:
+class Progress(LineRenderable):
     """A progress bar that displays the progress of multiple tasks."""
 
     def __init__(self, *columns: Column, padding: int = 1) -> None:
@@ -237,7 +235,7 @@ class Progress:
 
     def _render_task(
         self, console: Console, task: Task, options: ConsoleOptions
-    ) -> Iterable[Segment]:
+    ) -> list[Segment]:
         """Render the task as a series of segments.
 
         Args:
@@ -245,7 +243,7 @@ class Progress:
             task: The task to render.
             options: The console options.
 
-        Yields:
+        Returns:
             The segments representing the rendered task.
         """
         width = options.max_width
@@ -286,9 +284,7 @@ class Progress:
 
         return line
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the progress bar as a series of segments.
 
         Args:
@@ -298,8 +294,4 @@ class Progress:
         Yields:
             The segments representing the rendered progress bar.
         """
-        for i, task in enumerate(self.tasks):
-            if i:
-                yield _NEWLINE
-
-            yield from self._render_task(console, task, options)
+        return [self._render_task(console, task, options) for task in self.tasks]

@@ -15,9 +15,9 @@ dev = [
   "pytest>=9.0.3,<10.0.0",
   "pytest-cov>=7.1.0,<8.0.0",
   "rich>=15.0.0,<16.0.0",
-  "ruff>=0.15.19,<0.16.0",
+  "ruff>=0.15.20,<0.16.0",
   "rust-just>=1.54.0,<2.0.0",
-  "ty>=0.0.53,<1.0.0"
+  "ty>=0.0.55,<1.0.0"
 ]
 
 [tool.maturin]
@@ -33,7 +33,7 @@ root_package = "fastrich"
 exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
-name = "Public render stack: (panel/columns/align/padding/rule/markup → table → console → text → wrap → segment → style → box)"
+name = "Public render stack: (panel/columns/align/padding/rule → table → console → markup → text → wrap → segment → style → box)"
 type = "layers"
 layers = [
     "panel",
@@ -41,9 +41,9 @@ layers = [
     "align",
     "padding",
     "rule",
-    "markup",
     "table",
     "console",
+    "markup",
     "text",
     "wrap",
     "measure",
@@ -53,6 +53,7 @@ layers = [
 ]
 containers = ["fastrich"]
 ignore_imports = [
+    # Sanctioned cycle to match Rich's Text.from_markup API
     "fastrich.text -> fastrich.markup",
 ]
 

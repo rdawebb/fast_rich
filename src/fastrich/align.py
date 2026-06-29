@@ -7,19 +7,17 @@ is given.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
 from .measure import measure
-from .segment import Segment, split_lines
-
-_NEWLINE = Segment("\n")
+from .segment import LineRenderable, Segment
 
 
-class Align:
+class Align(LineRenderable):
     """Position a renderable within the available width (and optional height)."""
 
     def __init__(
@@ -82,26 +80,20 @@ class Align:
         """
         return cls(renderable, "right", **kwargs)
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[list[Segment]]:
-        """Yield styled segments for the aligned renderable.
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
+        """Align the renderable within the available width and return the lines of styled segments.
 
         Args:
             console: The console instance to use for rendering.
             options: The console options to use for rendering.
 
-        Yields:
-            An iterable of styled segments for the aligned renderable.
+        Returns:
+            A list of lists of styled segments for the aligned renderable.
         """
         width = options.max_width
         target = max(0, min(measure(console, self.renderable, options).maximum, width))
-        lines = list(
-            split_lines(
-                list(
-                    console.render(self.renderable, options._replace(max_width=target))
-                )
-            )
+        lines = console.render_lines(
+            self.renderable, options._replace(max_width=target)
         )
         used = [sum(cell_len(s.text) for s in line) for line in lines]
         block = min(max(used, default=0), width)
@@ -142,8 +134,4 @@ class Align:
                 else:
                     rows = rows + [blank] * extra
 
-        for i, row in enumerate(rows):
-            if i:
-                yield _NEWLINE
-
-            yield from row
+        return rows

@@ -7,7 +7,7 @@ console render protocol.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -17,12 +17,10 @@ if TYPE_CHECKING:
 from ._width import cell_len
 from .box import SQUARE
 from .padding import Padding
-from .segment import CachedBytes, Segment, split_lines
-
-_NEWLINE = Segment("\n")
+from .segment import CachedBytes, LineRenderable, Segment
 
 
-class Panel(CachedBytes):
+class Panel(CachedBytes, LineRenderable):
     """Frame a renderable in a box, with optional title in the top rule.
 
     Cached bytes assume the panel and its child renderable are stable after
@@ -100,56 +98,40 @@ class Panel(CachedBytes):
 
         return _normalise(self.padding)
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Iterable[Segment]:
-        """Render the panel to the console.
+    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
+        """Render the panel's body to lines of styled segments.
 
         Args:
             console: The console to render to.
             options: The console options.
 
-        Yields:
-            An iterable of styled segments representing the panel.
+        Returns:
+            A list of lists of styled segments, one list per line.
         """
         b, bs = self.box, self.border_style
         outer = min(self.width or options.max_width, options.max_width)
         inner = max(0, outer - 2)
 
         padded = Padding(self.renderable, self.padding)
-        body = list(
-            split_lines(list(console.render(padded, options._replace(max_width=inner))))
-        )
+        body = console.render_lines(padded, options._replace(max_width=inner))
 
         rows = []
-
-        # top rule (with optional title)
         title = self.title.plain if hasattr(self.title, "plain") else str(self.title)
-        if title:
-            label = f" {title} "
-            tlen = cell_len(label)
+        label = f" {title} " if title else ""
+        tlen = cell_len(label)
 
-            if tlen < inner:
-                side = inner - tlen
-                left = side // 2
-                rows.append(
-                    [
-                        Segment(b.top_left, bs),
-                        Segment(b.top * left, bs),
-                        Segment(label, self.title_style),
-                        Segment(b.top * (side - left), bs),
-                        Segment(b.top_right, bs),
-                    ]
-                )
-
-            else:
-                rows.append(
-                    [
-                        Segment(b.top_left, bs),
-                        Segment(b.top * inner, bs),
-                        Segment(b.top_right, bs),
-                    ]
-                )
+        if label and tlen < inner:
+            side = inner - tlen
+            left = side // 2
+            rows.append(
+                [
+                    Segment(b.top_left, bs),
+                    Segment(b.top * left, bs),
+                    Segment(label, self.title_style),
+                    Segment(b.top * (side - left), bs),
+                    Segment(b.top_right, bs),
+                ]
+            )
 
         else:
             rows.append(
@@ -160,19 +142,9 @@ class Panel(CachedBytes):
                 ]
             )
 
-        # Body lines (each already inner-wide from Padding)
-        for line in body:
-            used = sum(cell_len(seg.text) for seg in line)
-            pad = Segment(" " * (inner - used)) if used < inner else None
-            row = [Segment(b.left, bs), *line]
+        for line in body:  # Each already inner-wide
+            rows.append([Segment(b.left, bs), *line, Segment(b.right, bs)])
 
-            if pad is not None:
-                row.append(pad)
-
-            row.append(Segment(b.right, bs))
-            rows.append(row)
-
-        # Bottom rule
         rows.append(
             [
                 Segment(b.bottom_left, bs),
@@ -181,8 +153,4 @@ class Panel(CachedBytes):
             ]
         )
 
-        for i, row in enumerate(rows):
-            if i:
-                yield _NEWLINE
-
-            yield from row
+        return rows
