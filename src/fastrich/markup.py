@@ -31,16 +31,19 @@ def escape(markup: str) -> str:
     return markup.replace("[", "\\[")
 
 
-def render(markup: str, style=None) -> Text:
+def render(markup: str, style=None, *, emoji_replace=None, style_resolver=None) -> Text:
     """Parse `markup` into a styled Text.
 
     Args:
         markup: The input string containing markup tags.
         style: Optional base style to apply to the text.
+        emoji_replace: Optional function to replace emoji shortcodes in the text.
+        style_resolver: Optional function to resolve style names to Style objects.
 
     Returns:
         A styled Text object with spans applied.
     """
+    resolve = style_resolver or Style.parse
     plain: list[str] = []
     spans: list[tuple] = []  # (start, end, Style, open_seq)
     stack: list[tuple] = []  # (defn, start, open_seq)
@@ -56,6 +59,9 @@ def render(markup: str, style=None) -> Text:
         """
         nonlocal cursor
         s = s.replace("\\[", "[")
+        if emoji_replace is not None:
+            s = emoji_replace(s)
+
         if s:
             plain.append(s)
             cursor += len(s)
@@ -73,14 +79,14 @@ def render(markup: str, style=None) -> Text:
                         defn, start, s_seq = stack.pop(i)
 
                         if cursor > start:
-                            spans.append((start, cursor, Style.parse(defn), s_seq))
+                            spans.append((start, cursor, resolve(defn), s_seq))
 
                         break
 
             elif stack:
                 defn, start, s_seq = stack.pop()
                 if cursor > start:
-                    spans.append((start, cursor, Style.parse(defn), s_seq))
+                    spans.append((start, cursor, resolve(defn), s_seq))
 
         else:
             stack.append((tag, cursor, seq))
@@ -90,7 +96,7 @@ def render(markup: str, style=None) -> Text:
     while stack:
         defn, start, s_seq = stack.pop()
         if cursor > start:
-            spans.append((start, cursor, Style.parse(defn), s_seq))
+            spans.append((start, cursor, resolve(defn), s_seq))
 
     text = Text("".join(plain), style=style)
     for start, end, st, _ in sorted(spans, key=lambda x: x[3]):

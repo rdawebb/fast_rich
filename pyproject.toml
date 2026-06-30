@@ -36,6 +36,7 @@ exclude_type_checking_imports = true
 name = "Public render stack: (panel/columns/align/padding/rule → table → console → markup → text → wrap → segment → style → box)"
 type = "layers"
 layers = [
+    "group",
     "panel",
     "columns",
     "align",
@@ -55,6 +56,27 @@ containers = ["fastrich"]
 ignore_imports = [
     # Sanctioned cycle to match Rich's Text.from_markup API
     "fastrich.text -> fastrich.markup",
+]
+
+[[tool.importlinter.contracts]]
+name = "Emoji is a pure leaf"
+type = "forbidden"
+source_modules = ["fastrich.emoji"]
+forbidden_modules = [
+  "fastrich.style",
+  "fastrich.text",
+  "fastrich.console",
+  "fastrich.markup",
+]
+
+[[tool.importlinter.contracts]]
+name = "Theme depends only on style"
+type = "forbidden"
+source_modules = ["fastrich.theme"]
+forbidden_modules = [
+  "fastrich.text",
+  "fastrich.console",
+  "fastrich.markup",
 ]
 
 [[tool.importlinter.contracts]]

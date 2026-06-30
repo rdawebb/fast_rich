@@ -6,7 +6,10 @@ import io
 import os
 import sys
 from functools import cached_property
-from typing import Any, Callable, Iterable, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple
+
+if TYPE_CHECKING:
+    from .theme import Theme
 
 from .segment import Segment, encode_line, split_lines
 from .style import Style
@@ -38,6 +41,8 @@ class Console:
         color_system: str | None = "auto",
         force_terminal: bool | None = None,
         markup: bool = True,
+        emoji: bool = True,
+        theme: Theme | None = None,
     ) -> None:
         """Initialise the Console with optional file, width, color system, and force terminal settings.
 
@@ -47,11 +52,14 @@ class Console:
             color_system: The color system to use. Defaults to "auto".
             force_terminal: Whether to force the use of a terminal. Defaults to None.
             markup: Whether to parse console markup in strings. Defaults to True.
+            emoji: Whether to replace emoji :shortcodes: in strings. Defaults to True.
         """
         self.file: Any = file if file is not None else sys.stdout
         self._width = width
         self._force_terminal = force_terminal
         self._markup = markup
+        self._emoji = emoji
+        self._theme = theme
         self._color_system_arg = (
             color_system  # "auto" | None | "standard" | "256" | "truecolor"
         )
@@ -203,12 +211,56 @@ class Console:
             The resulting Text.
         """
         use_markup = self._markup if markup is None else markup
+        emoji_replace = self._emoji_replace if self._emoji else None
+
         if use_markup and "[" in text:
             from .markup import render as render_markup
 
-            return render_markup(text, style)
+            return render_markup(
+                text,
+                style,
+                emoji_replace=emoji_replace,
+                style_resolver=self._resolve_style,
+            )
+
+        if emoji_replace is not None:
+            text = emoji_replace(text)
 
         return Text(text, style)
+
+    def _emoji_replace(self, text: str) -> str:
+        """Substitute :shortcode: emoji in `text` (the markup emoji hook).
+
+        Args:
+            text: The text to scan for shortcodes.
+
+        Returns:
+            The text with recognised shortcodes replaced by glyphs.
+        """
+        from .emoji import replace
+
+        return replace(text)
+
+    def _resolve_style(self, definition: str) -> Style:
+        """Resolve a markup tag or base style string to a Style.
+
+        Looks the name up in the active theme first (when set), then falls back
+        to parsing it as a style definition. This is the `style_resolver` the
+        console hands to the markup parser.
+
+        Args:
+            definition: A theme style name or a style definition string.
+
+        Returns:
+            The resolved Style.
+        """
+        if self._theme is not None:
+            named = self._theme.get(definition)
+
+            if named is not None:
+                return named
+
+        return Style.parse(definition)
 
     def _render_text(self, text: Text) -> str:
         """Apply the color policy: plain when disabled, ANSI otherwise.
@@ -381,7 +433,7 @@ class Console:
                 console default when None.
         """
         if style is not None and not isinstance(style, Style):
-            style = Style.parse(style)
+            style = self._resolve_style(style)
 
         # Fast path: single string
         if len(objects) == 1 and isinstance(objects[0], str):
@@ -400,7 +452,8 @@ class Console:
                 if use_markup and "[" in text:
                     segs = list(self._str_to_text(text, style)._segments())
                 else:
-                    segs = [Segment(text, style)]
+                    plain = self._emoji_replace(text) if self._emoji else text
+                    segs = [Segment(plain, style)]
 
                 no_color, encoding = self.no_color, self.encoding
                 lines = [
