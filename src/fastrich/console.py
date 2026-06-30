@@ -6,12 +6,14 @@ import io
 import os
 import sys
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple
 
 if TYPE_CHECKING:
     from .theme import Theme
 
+from . import control
 from .segment import Segment, encode_line, lru_set, split_lines
 from .style import Style
 from .text import Text
@@ -24,8 +26,8 @@ RICH_PROTOCOL = "__rich_console__"
 # encoded bytes (without a trailing end) memoised per render context
 BYTES_PROTOCOL = "__rich_bytes__"
 
-# Upper bound on the single-string print() cache, evicted LRU. Bounds memory
-# under long Live/loop sessions printing high-cardinality strings.
+# Upper bound on the single-string print() cache, evicted LRU, bounds memory
+# under long Live/loop sessions
 _MAX_PRINT_CACHE = 1024
 
 
@@ -71,7 +73,6 @@ class Console:
         # The byte-emitting writer is resolved and cached from sink type on first write
         self._writer: Callable[[bytes], None] | None = None
         # Caches final bytes for single-string print() calls keyed on (text, style_key, sep, end).
-        # An OrderedDict used as an LRU, bounded by _MAX_PRINT_CACHE.
         self._print_cache: OrderedDict[tuple, bytes] = OrderedDict()
 
     def _fileno(self) -> int | None:
@@ -408,6 +409,43 @@ class Console:
             self._writer = self._resolve_writer()
 
         self._writer(data)
+
+    def _write_control(self, *codes: str) -> None:
+        """Write terminal control sequences, suppressed when not a terminal.
+
+        Args:
+            codes: Control sequences (from the control module) to emit in order.
+        """
+        if not self.is_terminal or not codes:
+            return
+
+        return self._write_bytes("".join(codes).encode(self.encoding))
+
+    def show_cursor(self, show: bool = True) -> None:
+        """Show or hide the terminal cursor.
+
+        Args:
+            show: True to show the cursor, False to hide it.
+        """
+        self._write_control(control.SHOW_CURSOR if show else control.HIDE_CURSOR)
+
+    @contextmanager
+    def screen(self):
+        """Enter the alternate screen buffer for the duration of the context.
+
+        Hides the cursor and switches to the alternate buffer on entry, restores
+        the cursor and the primary buffer on exit. A no-op on non-terminal sinks.
+
+        Yields:
+            The console, for use within the block.
+        """
+        self._write_control(control.ALT_SCREEN_ENTER, control.HIDE_CURSOR, control.HOME)
+
+        try:
+            yield self
+
+        finally:
+            self._write_control(control.SHOW_CURSOR, control.ALT_SCREEN_EXIT)
 
     def print(
         self,

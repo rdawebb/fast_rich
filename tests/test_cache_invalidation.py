@@ -1,13 +1,4 @@
-"""Cache-invalidation correctness — the gate before Live.
-
-Live re-renders a mutating renderable every frame, so invalidation across the
-table render caches must be airtight: the resolve cache (`_resolved`), the
-per-row L2 cache (`_row_cache`), and the L1 byte cache (`_byte_cache`). These
-tests pin both invalidation paths — documented mutators
-(`update_cell`/`add_row`/`add_column`, row-precise) and the coarse out-of-band
-path (`mark_dirty` -> `_on_mark_dirty`) — and the render-context keying of L1.
-The console single-string print cache is also LRU-bounded here.
-"""
+"""Unit tests for cache-invalidation correctness"""
 
 import io
 
@@ -21,7 +12,17 @@ from fastrich.text import Text
 
 
 def _print(renderable, *, width: int = 24, color=None, markup: bool = True) -> str:
-    """Render via console.print (exercises the real L1 byte-cache path)."""
+    """Render via console.print.
+
+    Args:
+        renderable: The renderable to print.
+        width: The width of the console.
+        color: The color system to use.
+        markup: Whether to enable console markup.
+
+    Returns:
+        The rendered string.
+    """
     c = Console(
         file=io.StringIO(),
         color_system=color,
@@ -30,14 +31,24 @@ def _print(renderable, *, width: int = 24, color=None, markup: bool = True) -> s
         markup=markup,
     )
     c.print(renderable)
+
     return c.file.getvalue()
 
 
 def _table(rows, headers=("A", "B")) -> Table:
-    """Build a fresh ASCII table from a sequence of row tuples."""
+    """Build a fresh ASCII table from a sequence of row tuples.
+
+    Args:
+        rows: The rows of the table.
+        headers: The column headers.
+
+    Returns:
+        The table object.
+    """
     t = Table(*headers, box=ASCII)
     for row in rows:
         t.add_row(*row)
+
     return t
 
 
