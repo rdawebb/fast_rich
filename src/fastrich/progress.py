@@ -172,6 +172,8 @@ class Progress(LineRenderable):
         self.columns: list[Column] = list(columns) or default_columns()
         self.padding = padding
         self.tasks: list[Task] = []
+        # Per-task line cache: task_id -> (signature, rendered line)
+        self._line_cache: dict[int, tuple[tuple, list[Segment]]] = {}
 
     def add_task(
         self, description: str, total: int = 100, completed: int = 0, **fields
@@ -215,10 +217,13 @@ class Progress(LineRenderable):
         t = self.tasks[task_id]
         if total is not None:
             t.total = total
+
         if completed is not None:
             t.completed = completed
+
         if advance is not None:
             t.completed += advance
+
         if description is not None:
             t.description = description
 
@@ -294,4 +299,45 @@ class Progress(LineRenderable):
         Yields:
             The segments representing the rendered progress bar.
         """
-        return [self._render_task(console, task, options) for task in self.tasks]
+        width = options.max_width
+        cache = self._line_cache
+        out: list[list[Segment]] = []
+        for task in self.tasks:
+            sig = self._task_signature(task, width)
+            cached = cache.get(task.id)
+
+            if sig is not None and cached is not None and cached[0] == sig:
+                out.append(cached[1])
+                continue
+
+            line = self._render_task(console, task, options)
+            if sig is not None:
+                cache[task.id] = (sig, line)
+
+            else:
+                # Unsignable task (e.g. uncomparable field keys)
+                cache.pop(task.id, None)
+
+            out.append(line)
+
+        return out
+
+    @staticmethod
+    def _task_signature(task: Task, width: int) -> tuple | None:
+        """A value tuple identifying a task's render state, or None if it can't
+        be built (e.g. uncomparable field keys defeat the stable ordering).
+
+        Args:
+            task: The task to fingerprint.
+            width: The render width the line is keyed against.
+
+        Returns:
+            A comparable signature tuple, or None to force a recompute.
+        """
+        try:
+            fields = tuple(sorted(task.fields.items())) if task.fields else ()
+
+        except TypeError:
+            return None
+
+        return (width, task.description, task.completed, task.total, fields)

@@ -3,7 +3,6 @@
 Holds a frame set and interval; the current frame is chosen from elapsed time.
 `__rich_console__` reads the monotonic clock (so manual re-prints animate);
 `_segments_at` takes an explicit elapsed value for deterministic use/tests.
-The auto-refresh loop that drives smooth animation is Live's job (Phase 7).
 """
 
 from __future__ import annotations
@@ -17,13 +16,9 @@ if TYPE_CHECKING:
 
 import time as _time
 
+from ._spinners import SPINNERS
+from ._width import cell_len
 from .segment import Segment
-
-# Name -> (frames, interval_seconds)
-SPINNERS = {
-    "dots": ("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", 0.08),
-    "line": ("-\\|/", 0.13),
-}
 
 
 class Spinner:
@@ -45,9 +40,13 @@ class Spinner:
             style: The style to apply to the spinner.
             speed: The speed of the spinner animation.
         """
-        frames, interval = SPINNERS[name]
-        self.frames = frames
-        self.interval = interval / speed
+        spinner = SPINNERS[name]
+        frames = spinner["frames"]
+        width = max(cell_len(frame) for frame in frames)  # Prevent trailing text shift
+        self.frames = [frame + " " * (width - cell_len(frame)) for frame in frames]
+        self.interval = (
+            spinner["interval"] / 1000.0
+        ) / speed  # cli-spinners ms -> seconds
         self.text = text
         self.style = style
         self._start = None
@@ -71,6 +70,15 @@ class Spinner:
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> Iterable[Segment]:
+        """Generate the segments to display the spinner.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+
+        Yields:
+            The segments to display the spinner.
+        """
         if self._start is None:
             self._start = _time.monotonic()
 
