@@ -14,11 +14,16 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .measure import measure
-from .segment import LineRenderable, Segment
+from .segment import CachedBytes, LineRenderable, Segment
 
 
-class Align(LineRenderable):
-    """Position a renderable within the available width (and optional height)."""
+class Align(CachedBytes, LineRenderable):
+    """Position a renderable within the available width (and optional height).
+
+    Cached bytes assume the aligned renderable is stable after construction.
+    Reassigning `align.renderable` or mutating a nested child in place is not
+    tracked, call `mark_dirty()` afterwards.
+    """
 
     def __init__(
         self,
@@ -36,6 +41,7 @@ class Align(LineRenderable):
             vertical: The vertical alignment to apply (if height is given).
             height: The height to align within (if vertical is given).
         """
+        self._init_byte_cache()
         self.renderable = renderable
         self.align = align
         self.vertical = vertical

@@ -36,7 +36,7 @@ def _cell_plain(cell: str | Text) -> str:
 
 
 def _plain_line(
-    text: str, width: int, justify: str, base: "Style | None"
+    text: str, width: int, justify: str, base: Style | None
 ) -> "list[Segment]":
     """Lay out one plain (span-free) cell line: a styled run plus padding.
 
@@ -233,6 +233,8 @@ class Table(CachedBytes):
             The updated table.
         """
         self.columns.append(Column(header, **kwargs))
+        for row in self.rows:
+            row.append("")  # New column's cell for pre-existing rows
         self._row_cache = [None] * len(self.rows)  # Structure changed
         self._bump()
 

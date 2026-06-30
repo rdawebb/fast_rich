@@ -5,13 +5,14 @@ from __future__ import annotations
 import io
 import os
 import sys
+from collections import OrderedDict
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple
 
 if TYPE_CHECKING:
     from .theme import Theme
 
-from .segment import Segment, encode_line, split_lines
+from .segment import Segment, encode_line, lru_set, split_lines
 from .style import Style
 from .text import Text
 
@@ -22,6 +23,10 @@ RICH_PROTOCOL = "__rich_console__"
 # A byte-cacheable renderable implements this method, returning its final
 # encoded bytes (without a trailing end) memoised per render context
 BYTES_PROTOCOL = "__rich_bytes__"
+
+# Upper bound on the single-string print() cache, evicted LRU. Bounds memory
+# under long Live/loop sessions printing high-cardinality strings.
+_MAX_PRINT_CACHE = 1024
 
 
 class ConsoleOptions(NamedTuple):
@@ -65,8 +70,9 @@ class Console:
         )
         # The byte-emitting writer is resolved and cached from sink type on first write
         self._writer: Callable[[bytes], None] | None = None
-        # Caches final bytes for single-string print() calls keyed on (text, style_key, sep, end)
-        self._print_cache: dict[tuple, bytes] = {}
+        # Caches final bytes for single-string print() calls keyed on (text, style_key, sep, end).
+        # An OrderedDict used as an LRU, bounded by _MAX_PRINT_CACHE.
+        self._print_cache: OrderedDict[tuple, bytes] = OrderedDict()
 
     def _fileno(self) -> int | None:
         """Return the file descriptor of the console file, or None if not available.
@@ -262,17 +268,6 @@ class Console:
 
         return Style.parse(definition)
 
-    def _render_text(self, text: Text) -> str:
-        """Apply the color policy: plain when disabled, ANSI otherwise.
-
-        Args:
-            text: The text to render.
-
-        Returns:
-            The rendered text.
-        """
-        return text.plain if self.no_color else text.render()
-
     def render(
         self, renderable, options: ConsoleOptions | None = None
     ) -> Iterable[Segment]:
@@ -446,9 +441,13 @@ class Console:
                 end,
                 use_markup,
             )
-            cached = self._print_cache.get(key)
+            cache = self._print_cache
+            cached = cache.get(key)
 
-            if cached is None:
+            if cached is not None:
+                cache.move_to_end(key)
+
+            else:
                 if use_markup and "[" in text:
                     segs = list(self._str_to_text(text, style)._segments())
                 else:
@@ -462,7 +461,7 @@ class Console:
                 ]
 
                 cached = b"\n".join(lines) + end.encode(encoding)
-                self._print_cache[key] = cached
+                lru_set(cache, key, cached, _MAX_PRINT_CACHE)
 
             self._write_bytes(cached)
             return

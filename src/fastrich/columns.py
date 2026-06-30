@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .measure import measure
-from .segment import LineRenderable, Segment
+from .segment import CachedBytes, LineRenderable, Segment
 
 
 def _fit_line(line: list[Segment], width: int) -> list[Segment]:
@@ -62,8 +62,13 @@ def _fit_line(line: list[Segment], width: int) -> list[Segment]:
     return out
 
 
-class Columns(LineRenderable):
-    """Layout renderables into columns."""
+class Columns(CachedBytes, LineRenderable):
+    """Layout renderables into columns.
+
+    Cached bytes assume the items are stable after construction. Mutating the
+    `renderables` list or a nested child in place is not tracked, call
+    `mark_dirty()` afterwards.
+    """
 
     def __init__(
         self, renderables, *, padding: int = 1, width: int | None = None
@@ -75,6 +80,7 @@ class Columns(LineRenderable):
             padding: The padding between columns.
             width: The fixed column width override.
         """
+        self._init_byte_cache()
         self.renderables = list(renderables)
         self.padding = padding
         self.width = width  # Fixed column width override

@@ -30,7 +30,7 @@ class Span(NamedTuple):
 class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
-    __slots__ = ("plain", "style", "_spans", "_cache")
+    __slots__ = ("plain", "style", "_spans")
 
     def __init__(self, text: str = "", style: Style | None = None) -> None:
         """Initialise with optional plain text and base style.
@@ -42,7 +42,6 @@ class Text:
         self.plain = text
         self.style = style  # Base style applied to the whole string
         self._spans: list[Span] = []
-        self._cache: dict[str, bytes] = {}
 
     def __len__(self) -> int:
         """Return the length of the plain text.
@@ -94,7 +93,6 @@ class Text:
         Returns:
             The Text object for chaining.
         """
-        self._cache = {}
         start = len(self.plain)
         self.plain += text
         if style is not None:
@@ -113,7 +111,6 @@ class Text:
         Returns:
             The Text object for chaining.
         """
-        self._cache = {}
         if end is None:
             end = len(self.plain)
 
@@ -194,7 +191,7 @@ class Text:
         return Measurement(minimum, maximum)
 
     def render_bytes(self, encoding: str = "utf-8") -> bytes:
-        """Render the text to bytes, caching per encoding.
+        """Render the text to bytes.
 
         Args:
             encoding: The encoding to use for the output bytes.
@@ -202,17 +199,12 @@ class Text:
         Returns:
             The rendered ANSI bytes.
         """
-        cached = self._cache.get(encoding)
-        if cached is None:
-            cached = b"".join(
-                seg.style.render_bytes(seg.text, encoding)
-                if seg.style
-                else seg.text.encode(encoding)
-                for seg in self._segments()
-            )
-            self._cache[encoding] = cached
-
-        return cached
+        return b"".join(
+            seg.style.render_bytes(seg.text, encoding)
+            if seg.style
+            else seg.text.encode(encoding)
+            for seg in self._segments()
+        )
 
     def render(self) -> str:
         """Render the text as an ANSI string.

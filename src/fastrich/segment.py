@@ -105,6 +105,20 @@ def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
     return bytes(out)
 
 
+def lru_set(cache: OrderedDict, key, value, maxsize: int) -> None:
+    """Insert into an OrderedDict used as an LRU, evicting the oldest past maxsize.
+
+    Args:
+        cache: The OrderedDict to insert into, ordered oldest-first.
+        key: The cache key to set.
+        value: The value to store.
+        maxsize: The maximum number of entries to retain.
+    """
+    cache[key] = value
+    if len(cache) > maxsize:
+        cache.popitem(last=False)
+
+
 _NEWLINE = Segment("\n")
 
 
@@ -247,8 +261,6 @@ class CachedBytes:
             encode_line(tuple(line), no_color, encoding)
             for line in self._iter_lines(console, options)
         )
-        cache[key] = cached
-        if len(cache) > self._max_byte_contexts:
-            cache.popitem(last=False)
+        lru_set(cache, key, cached, self._max_byte_contexts)
 
         return cached
