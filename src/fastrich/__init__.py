@@ -17,12 +17,15 @@ __all__ = [
     "box",
     "Panel",
     "Group",
+    "group",
     "Rule",
     "Padding",
     "Align",
     "Columns",
     "Measurement",
     "markup",
+    "Theme",
+    "Live",
 ]
 
 _LAZY = {
@@ -37,12 +40,15 @@ _LAZY = {
     "box": "fastrich.box",
     "Panel": "fastrich.panel",
     "Group": "fastrich.group",
+    "group": "fastrich.group",
     "Rule": "fastrich.rule",
     "Padding": "fastrich.padding",
     "Align": "fastrich.align",
     "Columns": "fastrich.columns",
     "Measurement": "fastrich.measure",
     "markup": "fastrich.markup",
+    "Theme": "fastrich.theme",
+    "Live": "fastrich.live",
 }
 
 

@@ -1,12 +1,10 @@
 """Terminal control sequences: cursor movement, erasing, and screen control.
 
-A pure leaf — string builders for ANSI/VT100 control codes, imported by the
-console for `screen()`, cursor visibility, and (later) the Live refresh loop.
-Sequences are returned as `str`; the console encodes and writes them, and
-suppresses them entirely when the sink is not a terminal.
-
-Coordinates in `move_to`/`move_to_column` are 0-based at this API and converted
-to the terminal's 1-based scheme internally.
+String builders for ANSI/VT100 control codes, imported by the console for
+`screen()`, cursor visibility, and the Live refresh loop. Sequences are returned
+as `str`, the console encodes and writes them, and suppresses them entirely when
+the sink is not a terminal. Coordinates in `move_to`/`move_to_column` are 0-based
+and converted to the terminal's 1-based scheme internally.
 """
 
 from __future__ import annotations

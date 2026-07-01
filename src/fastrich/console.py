@@ -320,6 +320,27 @@ class Console:
 
         return list(split_lines(self.render(renderable, opts)))
 
+    def render_bytes(self, renderable, options: ConsoleOptions | None = None) -> bytes:
+        """Render a renderable to its encoded bytes, without a trailing newline.
+
+        Args:
+            renderable: The renderable to render.
+            options: The console options to use.
+
+        Returns:
+            The encoded block bytes (lines joined by newline, no trailing end).
+        """
+        opts = options or self.options
+        if hasattr(renderable, BYTES_PROTOCOL):
+            return renderable.__rich_bytes__(self, opts)
+
+        no_color, encoding = self.no_color, self.encoding
+
+        return b"\n".join(
+            encode_line(tuple(line), no_color, encoding)
+            for line in self.render_lines(renderable, opts)
+        )
+
     def render_str(self, renderable) -> str:
         """Render the given renderable as a string, applying color policy if enabled.
 

@@ -36,6 +36,7 @@ exclude_type_checking_imports = true
 name = "Public render stack: (panel/columns/align/padding/rule → table → console → markup → text → wrap → segment → style → box)"
 type = "layers"
 layers = [
+    "live",
     "group",
     "panel",
     "columns",
@@ -75,6 +76,18 @@ type = "forbidden"
 source_modules = ["fastrich.theme"]
 forbidden_modules = [
   "fastrich.text",
+  "fastrich.console",
+  "fastrich.markup",
+]
+
+[[tool.importlinter.contracts]]
+name = "Control is a pure leaf"
+type = "forbidden"
+source_modules = ["fastrich.control"]
+forbidden_modules = [
+  "fastrich.style",
+  "fastrich.text",
+  "fastrich.segment",
   "fastrich.console",
   "fastrich.markup",
 ]
