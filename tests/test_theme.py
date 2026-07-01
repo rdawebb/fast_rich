@@ -1,23 +1,17 @@
 """Unit tests for Theme named-style resolution via the markup resolver hook."""
 
-import io
+import functools
 
-from fastrich.console import Console
+import pytest
+
 from fastrich.style import Style
 from fastrich.theme import Theme
 
 
-def _sgr(renderable, *, theme=None, style=None, width=40) -> str:
+@pytest.fixture
+def sgr(render):
     """Render to a string with SGR codes (standard color, forced terminal)."""
-    c = Console(
-        file=io.StringIO(),
-        color_system="standard",
-        force_terminal=True,
-        width=width,
-        theme=theme,
-    )
-    c.print(renderable, style=style)
-    return c.file.getvalue()
+    return functools.partial(render, color="standard", width=40)
 
 
 def test_theme_get_known_and_unknown() -> None:
@@ -44,31 +38,31 @@ def test_theme_inherit_false_starts_empty() -> None:
     assert Theme(inherit=False).styles == {}
 
 
-def test_console_resolves_named_style_in_markup() -> None:
+def test_console_resolves_named_style_in_markup(sgr) -> None:
     """Test that a themed name in markup resolves to its Style."""
     th = Theme({"danger": "bold red"})
-    assert _sgr("[danger]boom[/]", theme=th) == "\x1b[1;31mboom\x1b[0m\n"
+    assert sgr("[danger]boom[/]", theme=th) == "\x1b[1;31mboom\x1b[0m\n"
 
 
-def test_console_resolves_named_base_style() -> None:
+def test_console_resolves_named_base_style(sgr) -> None:
     """Test that a themed name passed as the base style resolves."""
     th = Theme({"danger": "bold red"})
-    assert _sgr("hi", theme=th, style="danger") == "\x1b[1;31mhi\x1b[0m\n"
+    assert sgr("hi", theme=th, style="danger") == "\x1b[1;31mhi\x1b[0m\n"
 
 
-def test_console_unknown_name_falls_through_to_parse() -> None:
+def test_console_unknown_name_falls_through_to_parse(sgr) -> None:
     """Test that a name absent from the theme is parsed as a definition."""
     th = Theme({"danger": "bold red"})
-    assert _sgr("[bold]x[/]", theme=th) == "\x1b[1mx\x1b[0m\n"
+    assert sgr("[bold]x[/]", theme=th) == "\x1b[1mx\x1b[0m\n"
 
 
-def test_console_without_theme_unchanged() -> None:
+def test_console_without_theme_unchanged(sgr) -> None:
     """Test that markup with no theme parses tags exactly as before."""
-    assert _sgr("[red]y[/]") == "\x1b[31my\x1b[0m\n"
+    assert sgr("[red]y[/]") == "\x1b[31my\x1b[0m\n"
 
 
-def test_theme_and_emoji_compose() -> None:
+def test_theme_and_emoji_compose(sgr) -> None:
     """Test that the theme and emoji hooks are both active in one render."""
     th = Theme({"danger": "bold red"})
-    out = _sgr("[danger]:fire:[/]", theme=th)
+    out = sgr("[danger]:fire:[/]", theme=th)
     assert out == "\x1b[1;31m\U0001f525\x1b[0m\n"

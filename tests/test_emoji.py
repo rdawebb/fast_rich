@@ -1,61 +1,37 @@
 """Unit tests for emoji shortcode substitution and the markup hooks."""
 
-import io
+import pytest
 
-from fastrich.console import Console
 from fastrich.emoji import replace
 
 
-def _plain(renderable, *, emoji: bool = True, width: int = 40) -> str:
-    """Render a renderable to a plain string with emoji on/off.
-
-    Args:
-        renderable: The renderable to render.
-        emoji: Whether to enable emoji substitution.
-        width: The width of the console.
-
-    Returns:
-        The rendered plain string.
-    """
-    c = Console(file=io.StringIO(), color_system=None, width=width, emoji=emoji)
-    c.print(renderable)
-
-    return c.file.getvalue()
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("go :rocket:", "go \U0001f680"),  # known shortcode -> glyph
+        ("a :not_a_real_code: b", "a :not_a_real_code: b"),  # unknown left untouched
+        ("meet at 10:30", "meet at 10:30"),  # stray colons (times) ignored
+        ("no codes here", "no codes here"),  # no colon -> unchanged
+    ],
+)
+def test_replace(text, expected) -> None:
+    """Test shortcode replacement across known, unknown, and non-code inputs."""
+    assert replace(text) == expected
 
 
-def test_replace_known_code() -> None:
-    """Test that a known shortcode is replaced with its glyph."""
-    assert replace("go :rocket:") == "go \U0001f680"
-
-
-def test_replace_leaves_unknown_code() -> None:
-    """Test that an unrecognised shortcode is left untouched."""
-    assert replace("a :not_a_real_code: b") == "a :not_a_real_code: b"
-
-
-def test_replace_ignores_stray_colons() -> None:
-    """Test that lone colons (e.g. times) are not treated as shortcodes."""
-    assert replace("meet at 10:30") == "meet at 10:30"
-
-
-def test_replace_noop_without_colon() -> None:
-    """Test that text without a colon is returned unchanged."""
-    assert replace("no codes here") == "no codes here"
-
-
-def test_console_fast_path_emoji() -> None:
+def test_console_fast_path_emoji(render) -> None:
     """Test emoji substitution on the single plain-string fast path."""
-    assert _plain("build :fire: done") == "build \U0001f525 done\n"
+    assert render("build :fire: done", width=40) == "build \U0001f525 done\n"
 
 
-def test_console_markup_path_emoji() -> None:
+def test_console_markup_path_emoji(render) -> None:
     """Test emoji substitution inside markup, not in tag bodies."""
-    assert _plain("[bold]:star:[/]") == "\u2b50\n"
+    assert render("[bold]:star:[/]", width=40) == "\u2b50\n"
 
 
-def test_console_emoji_disabled() -> None:
+def test_console_emoji_disabled(render) -> None:
     """Test that emoji=False leaves shortcodes verbatim."""
-    assert _plain("build :rocket:", emoji=False) == "build :rocket:\n"
+    assert render("build :rocket:", width=40, emoji=False) == "build :rocket:\n"
 
 
 def test_markup_style_resolver_hook() -> None:
@@ -88,6 +64,6 @@ def test_markup_emoji_hook_skips_tag_bodies() -> None:
     assert all("[" not in chunk and "bold" not in chunk for chunk in seen)
 
 
-def test_literal_emoji_used_in_string() -> None:
+def test_literal_emoji_used_in_string(render) -> None:
     """Test that literal emoji characters are not replaced."""
-    assert _plain("build 🔥 done") == "build \U0001f525 done\n"
+    assert render("build 🔥 done", width=40) == "build \U0001f525 done\n"

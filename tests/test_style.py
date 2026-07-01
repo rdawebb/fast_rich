@@ -1,5 +1,7 @@
 """Unit test style behaviour: tri-state combine, SGR generation, parse."""
 
+import pytest
+
 from fastrich.style import NULL_STYLE, Style
 
 
@@ -10,13 +12,19 @@ def test_null_is_falsy_and_renders_plain() -> None:
     assert NULL_STYLE.render("x") == "x"
 
 
-def test_sgr_codes() -> None:
+@pytest.mark.parametrize(
+    "style, expected",
+    [
+        (Style(bold=True), "\x1b[1m"),
+        (Style(color="red"), "\x1b[31m"),
+        (Style(bgcolor="blue"), "\x1b[44m"),
+        (Style(color="bright_red"), "\x1b[91m"),
+        (Style(bold=True, color="red"), "\x1b[1;31m"),
+    ],
+)
+def test_sgr_codes(style, expected) -> None:
     """Test that SGR codes are generated correctly."""
-    assert Style(bold=True).sgr == "\x1b[1m"
-    assert Style(color="red").sgr == "\x1b[31m"
-    assert Style(bgcolor="blue").sgr == "\x1b[44m"
-    assert Style(color="bright_red").sgr == "\x1b[91m"
-    assert Style(bold=True, color="red").sgr == "\x1b[1;31m"
+    assert style.sgr == expected
 
 
 def test_render_wraps_with_reset() -> None:
@@ -47,11 +55,17 @@ def test_equality_and_hash() -> None:
     assert Style(bold=True) != Style(bold=False)
 
 
-def test_parse_vocabulary() -> None:
+@pytest.mark.parametrize(
+    "definition, expected",
+    [
+        ("bold red", Style(bold=True, color="red")),
+        ("italic on blue", Style(italic=True, bgcolor="blue")),
+        ("on bright_white", Style(bgcolor="bright_white")),
+    ],
+)
+def test_parse_vocabulary(definition, expected) -> None:
     """Test that parse vocabulary works correctly."""
-    assert Style.parse("bold red") == Style(bold=True, color="red")
-    assert Style.parse("italic on blue") == Style(italic=True, bgcolor="blue")
-    assert Style.parse("on bright_white") == Style(bgcolor="bright_white")
+    assert Style.parse(definition) == expected
 
 
 def test_parse_is_cached() -> None:

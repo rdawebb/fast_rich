@@ -1,9 +1,6 @@
 """Unit tests for word wrapping + fold rows + per-span styling survival through cells."""
 
-import io
-
 from fastrich.box import ASCII
-from fastrich.console import Console
 from fastrich.style import Style
 from fastrich.table import Table
 from fastrich.text import Text
@@ -45,38 +42,23 @@ def test_fit_end() -> None:
     assert fit_end("日本語", 3) == 1  # One wide char fits in 3, two don't
 
 
-def _plain(table, width=80) -> str:
-    """Render the table as plain text without color.
-
-    Args:
-        table: The table to render.
-        width: The width of the console.
-
-    Returns:
-        The plain text representation of the table.
-    """
-    c = Console(file=io.StringIO(), color_system=None, width=width)
-    c.print(table)
-    return c.file.getvalue()
-
-
-def test_fold_produces_multiline_row() -> None:
+def test_fold_produces_multiline_row(render) -> None:
     """Test that fold overflow produces a multiline row."""
     t = Table(box=ASCII)
     t.add_column("Desc", max_width=10, overflow="fold")
     t.add_row("the quick brown fox")
-    out = _plain(t)
+    out = render(t)
     assert "| the quick  |" in out
     assert "| brown fox  |" in out
 
 
-def test_fold_row_height_pads_short_cells() -> None:
+def test_fold_row_height_pads_short_cells(render) -> None:
     """Test that fold row height pads short cells."""
     t = Table(box=ASCII)
     t.add_column("A", max_width=10, overflow="fold")
     t.add_column("B")
     t.add_row("one two three four", "x")
-    lines = _plain(t).splitlines()
+    lines = render(t).splitlines()
 
     # The wrapped column makes a 2-line row; B's second line is blank-filled
     body = [line for line in lines if line.startswith("|") and "x" in line]
@@ -86,20 +68,18 @@ def test_fold_row_height_pads_short_cells() -> None:
     assert any(line.rstrip().endswith("|") for line in lines)
 
 
-def test_inline_span_survives_into_cell() -> None:
+def test_inline_span_survives_into_cell(render) -> None:
     """Test that inline span survives into a cell."""
     cell = Text("ab")
     cell.stylise(Style(color="red"), 0, 1)
     t = Table(box=ASCII)
     t.add_column("X")
     t.add_row(cell)
-    c = Console(file=io.StringIO(), color_system="standard", force_terminal=True)
-    c.print(t)
-    out = c.file.getvalue()
+    out = render(t, color="standard")
     assert "\x1b[31ma\x1b[0m" in out  # 'a' red, 'b' plain
 
 
-def test_existing_single_line_unchanged() -> None:
+def test_existing_single_line_unchanged(render) -> None:
     """Test that existing single line remains unchanged."""
     t = Table("Name", "Age", box=ASCII)
     t.add_row("Alice", "30")
@@ -110,4 +90,4 @@ def test_existing_single_line_unchanged() -> None:
         "| Alice | 30  |\n"
         "+-------+-----+\n"
     )
-    assert _plain(t) == expected
+    assert render(t) == expected

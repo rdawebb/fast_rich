@@ -1,92 +1,61 @@
 """Unit tests for console behaviour: capabilities, color policy, render protocol, output."""
 
-import io
 from typing import Iterable
 
-import pytest
-
-from fastrich.console import Console
 from fastrich.style import Style
 from fastrich.text import Text
 
 
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch) -> None:
-    """Clear environment variables that may affect console behavior.
-
-    Args:
-        monkeypatch: Pytest fixture for modifying environment variables.
-    """
-    for var in ("NO_COLOR", "FORCE_COLOR", "COLORTERM", "TERM", "COLUMNS"):
-        monkeypatch.delenv(var, raising=False)
-
-
-def _console(**kw) -> Console:
-    """Create a Console instance with default file and width settings.
-
-    Args:
-        **kw: Additional keyword arguments to pass to the Console constructor.
-
-    Returns:
-        The created Console instance.
-    """
-    kw.setdefault("file", io.StringIO())
-
-    return Console(**kw)
-
-
-def test_width_override_and_size() -> None:
+def test_width_override_and_size(make_console) -> None:
     """Test that width override and size are correctly applied to the Console instance."""
-    c = _console(width=20)
+    c = make_console(width=20)
     assert c.width == 20
     assert c.size == (20, 25)
 
 
-def test_color_disabled_strips_sgr() -> None:
+def test_color_disabled_strips_sgr(make_console) -> None:
     """Test that color disabled strips SGR escape sequences from output."""
-    buf = io.StringIO()
-    c = _console(color_system=None, file=buf)
+    c = make_console(color=None)
     c.print("ERROR", style="bold red")
-    assert buf.getvalue() == "ERROR\n"
+    assert c.file.getvalue() == "ERROR\n"
 
 
-def test_color_enabled_emits_sgr() -> None:
+def test_color_enabled_emits_sgr(make_console) -> None:
     """Test that color enabled emits SGR escape sequences in output."""
-    buf = io.StringIO()
-    c = _console(color_system="standard", force_terminal=True, width=20, file=buf)
+    c = make_console(color="standard", width=20)
     c.print("ERROR", style="bold red")
-    assert buf.getvalue() == "\x1b[1;31mERROR\x1b[0m\n"
+    assert c.file.getvalue() == "\x1b[1;31mERROR\x1b[0m\n"
 
 
-def test_no_color_env_wins(monkeypatch) -> None:
+def test_no_color_env_wins(monkeypatch, make_console) -> None:
     """Test that NO_COLOR environment variable wins over force_terminal setting."""
     monkeypatch.setenv("NO_COLOR", "1")
-    c = _console(force_terminal=True)
+    c = make_console(color="auto", force_terminal=True)
     assert c.no_color is True
 
 
-def test_force_color_marks_terminal(monkeypatch) -> None:
+def test_force_color_marks_terminal(monkeypatch, make_console) -> None:
     """Test that FORCE_COLOR environment variable marks terminal as color-capable."""
     monkeypatch.setenv("FORCE_COLOR", "1")
-    c = _console()
+    c = make_console(color="auto", force_terminal=None)
     assert c.is_terminal is True
     assert c.color_system == "standard"
 
 
-def test_auto_detects_truecolor(monkeypatch) -> None:
+def test_auto_detects_truecolor(monkeypatch, make_console) -> None:
     """Test that COLORTERM environment variable auto-detects truecolor."""
     monkeypatch.setenv("COLORTERM", "truecolor")
-    c = _console(force_terminal=True)
+    c = make_console(color="auto", force_terminal=True)
     assert c.color_system == "truecolor"
 
 
-def test_non_terminal_defaults_to_no_color() -> None:
+def test_non_terminal_defaults_to_no_color(make_console) -> None:
     """Test that non-terminal defaults to no color."""
-    c = _console()  # StringIO is not a tty
+    c = make_console(color="auto", force_terminal=None)  # StringIO is not a tty
     assert c.color_system is None
 
 
-def test_render_protocol_recurses() -> None:
+def test_render_protocol_recurses(make_console) -> None:
     """Test that render protocol recurses correctly."""
 
     class Banner:
@@ -106,13 +75,12 @@ def test_render_protocol_recurses() -> None:
             yield Text("hi", style=Style(bold=True))
             yield " =="
 
-    c = _console(color_system="standard", force_terminal=True)
+    c = make_console(color="standard")
     assert c.render_str(Banner()) == "== \x1b[1mhi\x1b[0m =="
 
 
-def test_print_joins_and_terminates() -> None:
+def test_print_joins_and_terminates(make_console) -> None:
     """Test that print joins and terminates correctly."""
-    buf = io.StringIO()
-    c = _console(color_system=None, file=buf)
+    c = make_console(color=None)
     c.print("a", "b", sep="-", end="!")
-    assert buf.getvalue() == "a-b!"
+    assert c.file.getvalue() == "a-b!"

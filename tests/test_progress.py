@@ -1,19 +1,9 @@
 """Unit tests for Spinner, ProgressBar, and Progress."""
 
-import io
-
 from fastrich.bar import ProgressBar
-from fastrich.console import Console
 from fastrich.progress import PercentageColumn, Progress
 from fastrich.spinner import Spinner
 from fastrich.style import Style
-
-
-def _plain(renderable, width: int = 40) -> str:
-    """Render the given renderable as a plain string, without color."""
-    c = Console(file=io.StringIO(), color_system=None, width=width)
-    c.print(renderable)
-    return c.file.getvalue()
 
 
 def test_spinner_frame_advances() -> None:
@@ -38,10 +28,10 @@ def test_spinner_with_text() -> None:
     assert segs[1].text == " loading"
 
 
-def test_bar_fill_split() -> None:
+def test_bar_fill_split(make_console) -> None:
     """Test that bar fill is split correctly."""
     bar = ProgressBar(total=100, completed=40, width=10)
-    c = Console(file=io.StringIO(), color_system="standard", force_terminal=True)
+    c = make_console(color="standard")
     segs = list(c.render(bar, c.options))
     assert segs[0].text == "━" * 4  # 40% of 10
     assert segs[1].text == "━" * 6
@@ -49,21 +39,21 @@ def test_bar_fill_split() -> None:
     assert segs[1].style == Style(color="bright_black")
 
 
-def test_bar_finished_uses_finished_style() -> None:
+def test_bar_finished_uses_finished_style(make_console) -> None:
     """Test that bar finished style is used correctly."""
     bar = ProgressBar(total=10, completed=10, width=5)
-    c = Console(file=io.StringIO(), color_system="standard", force_terminal=True)
+    c = make_console(color="standard")
     segs = list(c.render(bar, c.options))
     assert segs[0].text == "━" * 5
     assert len(segs) == 1  # No remaining segment
 
 
-def test_progress_row_layout() -> None:
+def test_progress_row_layout(render) -> None:
     """Test that progress row layout is correct."""
     p = Progress()
     p.add_task("Download", total=100, completed=40)
     # "Download"(8) + gut(1) + bar(26) + gut(1) + " 40%"(4) = 40
-    assert _plain(p, 40) == "Download " + "━" * 26 + "  40%\n"
+    assert render(p, width=40) == "Download " + "━" * 26 + "  40%\n"
 
 
 def test_progress_advance_and_percentage() -> None:

@@ -1,21 +1,25 @@
 """Unit tests for CachedBytes: byte caching of Tables and Panels in Console.print."""
 
-import io
+import functools
+
+import pytest
+
+from conftest import ASCII_NAME_AGE_TABLE
 
 from fastrich.box import ASCII
-from fastrich.console import Console
 from fastrich.panel import Panel
 from fastrich.segment import encode_line, split_lines
 from fastrich.style import Style
 from fastrich.table import Table
 
 
-def _color_console(width: int = 80) -> Console:
-    """A console with color enabled, writing to an in-memory text buffer."""
-    return Console(file=io.StringIO(), color_system="truecolor", width=width)
+@pytest.fixture
+def cc(make_console):
+    """Factory for a truecolor console writing to an in-memory buffer."""
+    return functools.partial(make_console, color="truecolor")
 
 
-def _pipeline_bytes(console: Console, renderable) -> bytes:
+def _pipeline_bytes(console, renderable) -> bytes:
     """The expected bytes via the existing segment pipeline (no trailing end)."""
     no_color, encoding = console.no_color, console.encoding
     return b"\n".join(
@@ -24,91 +28,69 @@ def _pipeline_bytes(console: Console, renderable) -> bytes:
     )
 
 
-def _sample_table() -> Table:
-    t = Table("Name", "Age", box=ASCII, border_style=Style(color="red"))
-    t.add_row("Alice", "30")
-    t.add_row("Bob", "100")
-    return t
-
-
-def test_table_bytes_match_pipeline() -> None:
+def test_table_bytes_match_pipeline(cc, sample_table) -> None:
     """Cached Table bytes are byte-identical to the segment pipeline."""
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     assert t.__rich_bytes__(c, c.options) == _pipeline_bytes(c, t)
 
 
-def test_panel_bytes_match_pipeline() -> None:
+def test_panel_bytes_match_pipeline(cc) -> None:
     """Cached Panel bytes are byte-identical to the segment pipeline."""
-    c = _color_console()
+    c = cc()
     p = Panel("hello", title="hi", border_style=Style(color="blue"))
     assert p.__rich_bytes__(c, c.options) == _pipeline_bytes(c, p)
 
 
-def test_nested_panel_table_match_pipeline() -> None:
+def test_nested_panel_table_match_pipeline(cc, sample_table) -> None:
     """A Panel wrapping a Table still renders correctly through the cache."""
-    c = _color_console()
-    p = Panel(_sample_table())
+    c = cc()
+    p = Panel(sample_table())
     assert p.__rich_bytes__(c, c.options) == _pipeline_bytes(c, p)
 
 
-def test_cache_hit_returns_same_object() -> None:
+def test_cache_hit_returns_same_object(cc, sample_table) -> None:
     """A second render with the same context reuses the cached bytes object."""
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     first = t.__rich_bytes__(c, c.options)
     second = t.__rich_bytes__(c, c.options)
     assert first is second
 
 
-def test_invalidation_on_add_row() -> None:
-    """Adding a row rebuilds the cache and changes the output."""
-    c = _color_console()
-    t = _sample_table()
+@pytest.mark.parametrize(
+    "build, mutate",
+    [
+        (lambda sample: sample(), lambda t: t.add_row("Carol", "42")),
+        (lambda sample: Table("Name", box=ASCII), lambda t: t.add_column("Age")),
+        (lambda sample: sample(), lambda t: t.update_cell(0, 0, "Alicia")),
+    ],
+    ids=["add_row", "add_column", "update_cell"],
+)
+def test_invalidation_rebuilds_cache(build, mutate, cc, sample_table) -> None:
+    """A tracked mutation rebuilds the cache and matches a fresh pipeline render."""
+    c = cc()
+    t = build(sample_table)
     before = t.__rich_bytes__(c, c.options)
-    t.add_row("Carol", "42")
+    mutate(t)
     after = t.__rich_bytes__(c, c.options)
     assert after != before
     assert after == _pipeline_bytes(c, t)
 
 
-def test_invalidation_on_add_column() -> None:
-    """Adding a column rebuilds the cache."""
-    c = _color_console()
-    t = Table("Name", box=ASCII)
-    before = t.__rich_bytes__(c, c.options)
-    t.add_column("Age")
-    after = t.__rich_bytes__(c, c.options)
-    assert after != before
-    assert after == _pipeline_bytes(c, t)
-
-
-def test_invalidation_on_update_cell() -> None:
-    """update_cell() rebuilds the cache and reflects the new value."""
-    c = _color_console()
-    t = _sample_table()
-    before = t.__rich_bytes__(c, c.options)
-    t.update_cell(0, 0, "Alicia")
-    after = t.__rich_bytes__(c, c.options)
-    assert after != before
-    assert after == _pipeline_bytes(c, t)
-
-
-def test_update_cell_out_of_range() -> None:
+def test_update_cell_out_of_range(sample_table) -> None:
     """update_cell() rejects row/column indices outside the table."""
-    import pytest
-
-    t = _sample_table()
+    t = sample_table()
     with pytest.raises(IndexError):
         t.update_cell(5, 0, "x")
     with pytest.raises(IndexError):
         t.update_cell(0, 5, "x")
 
 
-def test_mark_dirty_forces_rebuild() -> None:
+def test_mark_dirty_forces_rebuild(cc, sample_table) -> None:
     """mark_dirty() drops the cache so out-of-band mutation is picked up."""
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     first = t.__rich_bytes__(c, c.options)
     t.rows.append(["Dan", "7"])  # in-place mutation bypasses add_row
     stale = t.__rich_bytes__(c, c.options)
@@ -119,10 +101,10 @@ def test_mark_dirty_forces_rebuild() -> None:
     assert fresh != first
 
 
-def test_mark_dirty_after_in_place_row_removal() -> None:
+def test_mark_dirty_after_in_place_row_removal(cc, sample_table) -> None:
     """mark_dirty() picks up rows removed directly on `self.rows`."""
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     full = t.__rich_bytes__(c, c.options)
     del t.rows[0]  # in-place removal bypasses the tracked mutators
     t.mark_dirty()
@@ -131,15 +113,15 @@ def test_mark_dirty_after_in_place_row_removal() -> None:
     assert fresh != full
 
 
-def test_mark_dirty_resyncs_per_row_arrays() -> None:
+def test_mark_dirty_resyncs_per_row_arrays(cc, sample_table) -> None:
     """mark_dirty() keeps the parallel per-row arrays matched to `self.rows`.
 
     Regression: an in-place append left ``_row_versions`` short of ``_row_cache``
     (resized by mark_dirty), so the next render indexed it past its end and
     raised IndexError. Both arrays must track the live row count.
     """
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     t.__rich_bytes__(c, c.options)
 
     t.rows.append(["Dan", "7"])
@@ -157,10 +139,10 @@ def test_mark_dirty_resyncs_per_row_arrays() -> None:
     assert t.__rich_bytes__(c, c.options) == _pipeline_bytes(c, t)
 
 
-def test_context_sensitivity_width() -> None:
+def test_context_sensitivity_width(cc, sample_table) -> None:
     """A new max_width is cached independently and changes the output."""
-    c = _color_console()
-    t = _sample_table()
+    c = cc()
+    t = sample_table()
     wide = t.__rich_bytes__(c, c.options._replace(max_width=80))
     narrow = t.__rich_bytes__(c, c.options._replace(max_width=12))
     assert wide != narrow
@@ -171,30 +153,22 @@ def test_context_sensitivity_width() -> None:
     assert rewide is wide
 
 
-def test_print_fast_path_matches_repeated_calls() -> None:
+def test_print_fast_path_matches_repeated_calls(cc, sample_table) -> None:
     """print() output is stable and correct across repeated calls."""
-    t = _sample_table()
-    c = _color_console()
+    t = sample_table()
+    c = cc()
     c.print(t)
     first = c.file.getvalue()
 
-    c2 = _color_console()
+    c2 = cc()
     c2.print(t)  # cache is warm from the first console's render context
     second = c2.file.getvalue()
     assert first == second
 
 
-def test_print_plain_table_matches_legacy_output() -> None:
+def test_print_plain_table_matches_legacy_output(make_console, sample_table) -> None:
     """Plain (no-color) print output is unchanged by the byte cache."""
-    t = _sample_table()
-    c = Console(file=io.StringIO(), color_system=None, width=80)
+    t = sample_table()
+    c = make_console(color=None, width=80)
     c.print(t)
-    expected = (
-        "+-------+-----+\n"
-        "| Name  | Age |\n"
-        "+-------+-----+\n"
-        "| Alice | 30  |\n"
-        "| Bob   | 100 |\n"
-        "+-------+-----+\n"
-    )
-    assert c.file.getvalue() == expected
+    assert c.file.getvalue() == ASCII_NAME_AGE_TABLE
