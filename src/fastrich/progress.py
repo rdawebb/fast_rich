@@ -1,11 +1,4 @@
-"""Progress: task tracking with a trimmed column set.
-
-A task carries description/total/completed plus free-form fields. Columns turn a
-task into a renderable; the bar column flexes to fill the width left by the fixed
-columns. Rendering is one line per task, on demand — call `__rich_console__`
-(e.g. via `console.print(progress)`) after each `update`/`advance`. The
-auto-refreshing display lands with Live; the full Rich column set lands later.
-"""
+"""Progress: task tracking with a trimmed column set."""
 
 from __future__ import annotations
 
@@ -162,18 +155,70 @@ def default_columns() -> list[Column]:
 class Progress(LineRenderable):
     """A progress bar that displays the progress of multiple tasks."""
 
-    def __init__(self, *columns: Column, padding: int = 1) -> None:
+    def __init__(
+        self,
+        *columns: Column,
+        padding: int = 1,
+        console: Console | None = None,
+        auto_refresh: bool = True,
+        refresh_per_second: float = 10.0,
+        transient: bool = False,
+    ) -> None:
         """Initialise the progress bar with the given columns and padding.
 
         Args:
             columns: Optional columns to display in the progress bar.
             padding: The padding between columns (default is 1).
+            console: The console to use for rendering, default created if None.
+            auto_refresh: Whether to automatically refresh the progress bar (default is True).
+            refresh_per_second: The number of times to refresh per second (default is 10.0).
+            transient: Whether the progress bar should be transient (default is False).
         """
         self.columns: list[Column] = list(columns) or default_columns()
         self.padding = padding
         self.tasks: list[Task] = []
+        self._console = console
+        self._auto_refresh = auto_refresh
+        self._refresh_per_second = refresh_per_second
+        self._transient = transient
+        self._live = None
+
         # Per-task line cache: task_id -> (signature, rendered line)
         self._line_cache: dict[int, tuple[tuple, list[Segment]]] = {}
+
+    def __enter__(self) -> Progress:
+        """Start a managed live display for the progress bar.
+
+        Returns:
+            The progress bar instance.
+        """
+        from .live import Live
+
+        self._live = Live(
+            self,
+            console=self._console,
+            transient=self._transient,
+            auto_refresh=self._auto_refresh,
+            refresh_per_second=self._refresh_per_second,
+        )
+        self._live.start()
+
+        return self
+
+    def __exit__(self, *exc) -> None:
+        """Stop the managed live display when exiting the context manager.
+
+        Args:
+            exc: The exception type, value, and traceback if an exception occurred.
+        """
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+    def refresh(self) -> None:
+        """Redraw the managed live display."""
+        if self._live is not None:
+            self._live.refresh()
 
     def add_task(
         self, description: str, total: int = 100, completed: int = 0, **fields
@@ -191,6 +236,7 @@ class Progress(LineRenderable):
         """
         tid = len(self.tasks)
         self.tasks.append(Task(tid, description, total, completed, fields))
+        self.refresh()
 
         return tid
 
@@ -228,6 +274,7 @@ class Progress(LineRenderable):
             t.description = description
 
         t.fields.update(fields)
+        self.refresh()
 
     def advance(self, task_id: int, step: int = 1) -> None:
         """Advance the task with the given ID by the given number of steps.

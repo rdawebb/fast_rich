@@ -103,3 +103,79 @@ def test_live_no_renderable_is_safe(term) -> None:
     out = c.file.getvalue()
     assert out.startswith(ctl.HIDE_CURSOR)
     assert out.endswith(ctl.SHOW_CURSOR)
+
+
+def test_auto_refresh_thread_lifecycle(term) -> None:
+    """Test that auto-refresh spawns a ticker on a terminal and joins it on stop."""
+    from fastrich.spinner import Spinner
+
+    c = term()
+    live = Live(Spinner("line"), console=c, auto_refresh=True, refresh_per_second=60)
+    live.start()
+    assert live._thread is not None and live._thread.is_alive()
+    live.stop()
+    assert live._thread is None
+
+
+def test_auto_refresh_draws_multiple_frames(term) -> None:
+    """Test that the ticker redraws repeatedly (>=1 reposition between frames)."""
+    import time
+
+    from fastrich.spinner import Spinner
+
+    c = term()
+    with Live(Spinner("line"), console=c, auto_refresh=True, refresh_per_second=60):
+        time.sleep(0.15)  # ~9 ticks at 60/s; assert generously below
+    out = c.file.getvalue()
+    assert out.count(ctl.ERASE_DOWN) >= 1  # At least two frames were drawn
+
+
+def test_no_ticker_on_non_terminal(pipe, one_row_table) -> None:
+    """Test that a non-terminal sink never spawns a refresh thread."""
+    c = pipe()
+    t = one_row_table
+    live = Live(t("1", "2"), console=c, auto_refresh=True)
+    live.start()
+    assert live._thread is None
+    live.stop()
+
+
+def test_auto_refresh_disabled_no_thread(term, one_row_table) -> None:
+    """Test that auto_refresh=False draws manually with no background thread."""
+    c = term()
+    t = one_row_table
+    live = Live(t("1", "2"), console=c, auto_refresh=False)
+    live.start()
+    assert live._thread is None
+    live.update(t("9", "9"))
+    assert "9" in c.file.getvalue()
+    live.stop()
+
+
+def test_spinner_frame_advances_with_time() -> None:
+    """Test that the spinner selects a different frame as elapsed time grows."""
+    from fastrich.spinner import Spinner
+
+    sp = Spinner("line")
+    first = "".join(s.text for s in sp._segments_at(0.0))
+    later = "".join(s.text for s in sp._segments_at(sp.interval * 1.5))
+    assert first != later
+
+
+def test_progress_context_manager_draws_and_updates(term) -> None:
+    """Test that Progress as a context manager draws and reflects advances."""
+    from fastrich.progress import BarColumn, Progress, TextColumn
+
+    c = term(width=40)
+    with Progress(
+        TextColumn("{description}"),
+        BarColumn(),
+        console=c,
+        auto_refresh=False,
+    ) as p:
+        tid = p.add_task("work", total=10, completed=0)
+        p.advance(tid, 5)
+    out = c.file.getvalue()
+    assert "work" in out  # Description drawn
+    assert ctl.HIDE_CURSOR in out and ctl.SHOW_CURSOR in out  # Live lifecycle
+    assert ctl.ERASE_DOWN in out  # Redrawn on advance
