@@ -30,6 +30,24 @@ BYTES_PROTOCOL = "__rich_bytes__"
 # under long Live/loop sessions
 _MAX_PRINT_CACHE = 1024
 
+# Pre-encoded print() line terminators
+_COMMON_ENDS = {"\n": b"\n", "": b""}
+
+
+def _encode_end(end: str, encoding: str) -> bytes:
+    """Return the encoded print() terminator, without re-encoding common cases.
+
+    Args:
+        end: The print() terminator string.
+        encoding: The encoding to use for the terminator.
+
+    Returns:
+        The encoded terminator bytes.
+    """
+    encoded = _COMMON_ENDS.get(end)
+
+    return encoded if encoded is not None else end.encode(encoding)
+
 
 class ConsoleOptions(NamedTuple):
     """Options for the Console."""
@@ -519,7 +537,7 @@ class Console:
                     for line in split_lines(segs)
                 ]
 
-                cached = b"\n".join(lines) + end.encode(encoding)
+                cached = b"\n".join(lines) + _encode_end(end, encoding)
                 lru_set(cache, key, cached, _MAX_PRINT_CACHE)
 
             self._write_bytes(cached)
@@ -528,7 +546,7 @@ class Console:
         # Fast path: single byte-cacheable renderable
         if len(objects) == 1 and hasattr(objects[0], BYTES_PROTOCOL):
             body = objects[0].__rich_bytes__(self, self.options)
-            self._write_bytes(body + end.encode(self.encoding))
+            self._write_bytes(body + _encode_end(end, self.encoding))
             return
 
         # Fast path: single line-renderable renderable
@@ -538,7 +556,7 @@ class Console:
                 encode_line(tuple(line), no_color, encoding)
                 for line in self.render_lines(objects[0])
             ]
-            self._write_bytes(b"\n".join(lines) + end.encode(encoding))
+            self._write_bytes(b"\n".join(lines) + _encode_end(end, encoding))
             return
 
         segments = []
@@ -559,4 +577,4 @@ class Console:
             for line in split_lines(segments)
         ]
 
-        self._write_bytes(b"\n".join(lines) + end.encode(encoding))
+        self._write_bytes(b"\n".join(lines) + _encode_end(end, encoding))
