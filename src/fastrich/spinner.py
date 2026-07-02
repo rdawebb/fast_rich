@@ -18,7 +18,7 @@ import time as _time
 
 from ._spinners import SPINNERS
 from ._width import cell_len
-from .segment import Segment
+from .segment import Segment, encode_line
 
 
 class Spinner:
@@ -51,6 +51,12 @@ class Spinner:
         self.style = style
         self._start = None
 
+        # Fixed per-tick Segment set: frames and label never change between ticks
+        self._frame_segments = [Segment(frame, style) for frame in self.frames]
+        label = text if isinstance(text, str) else text.plain
+        self._label_segment = Segment(" " + label) if label else None
+        self._byte_cache: dict[tuple, bytes] = {}
+
     def _segments_at(self, elapsed: float) -> Iterable[Segment]:
         """Yield the segments to display at the given elapsed time.
 
@@ -60,12 +66,11 @@ class Spinner:
         Yields:
             The segments to display at the given elapsed time.
         """
-        idx = int(elapsed / self.interval) % len(self.frames)
-        yield Segment(self.frames[idx], self.style)
+        idx = int(elapsed / self.interval) % len(self._frame_segments)
+        yield self._frame_segments[idx]
 
-        if self.text:
-            label = self.text if isinstance(self.text, str) else self.text.plain
-            yield Segment(" " + label)
+        if self._label_segment is not None:
+            yield self._label_segment
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
@@ -83,3 +88,38 @@ class Spinner:
             self._start = _time.monotonic()
 
         yield from self._segments_at(_time.monotonic() - self._start)
+
+    def __rich_bytes__(self, console: Console, options: ConsoleOptions) -> bytes:
+        """Return the encoded bytes for the current frame, without a trailing end.
+
+        Reads the monotonic clock (like `__rich_console__`, so manual re-prints
+        animate) and returns bytes memoised per `(idx, no_color, encoding)`. The
+        frame Segments and label are immutable after init, so the cache never
+        needs invalidating and is naturally bounded by the frame count.
+
+        Args:
+            console: The console to render to.
+            options: The console options for this render.
+
+        Returns:
+            The encoded bytes for the current frame.
+        """
+        if self._start is None:
+            self._start = _time.monotonic()
+
+        idx = int((_time.monotonic() - self._start) / self.interval) % len(
+            self._frame_segments
+        )
+        no_color, encoding = console.no_color, console.encoding
+        key = (idx, no_color, encoding)
+
+        cached = self._byte_cache.get(key)
+        if cached is None:
+            line = (self._frame_segments[idx],)
+            if self._label_segment is not None:
+                line += (self._label_segment,)
+
+            cached = encode_line(line, no_color, encoding)
+            self._byte_cache[key] = cached
+
+        return cached
