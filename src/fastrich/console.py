@@ -449,16 +449,19 @@ class Console:
 
         self._writer(data)
 
-    def _write_control(self, *codes: str) -> None:
+    def _write_control(self, *codes: bytes) -> None:
         """Write terminal control sequences, suppressed when not a terminal.
 
+        Control codes are ASCII `bytes` (from the control module), so they emit
+        directly with no per-call encode.
+
         Args:
-            codes: Control sequences (from the control module) to emit in order.
+            codes: Control sequences to emit in order.
         """
         if not self.is_terminal or not codes:
             return
 
-        return self._write_bytes("".join(codes).encode(self.encoding))
+        return self._write_bytes(b"".join(codes))
 
     def show_cursor(self, show: bool = True) -> None:
         """Show or hide the terminal cursor.

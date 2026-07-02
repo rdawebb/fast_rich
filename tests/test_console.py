@@ -1,7 +1,9 @@
 """Unit tests for console behaviour: capabilities, color policy, render protocol, output."""
 
+import io
 from typing import Iterable
 
+from fastrich.console import Console
 from fastrich.style import Style
 from fastrich.text import Text
 
@@ -17,14 +19,14 @@ def test_color_disabled_strips_sgr(make_console) -> None:
     """Test that color disabled strips SGR escape sequences from output."""
     c = make_console(color=None)
     c.print("ERROR", style="bold red")
-    assert c.file.getvalue() == "ERROR\n"
+    assert c.file.getvalue() == b"ERROR\n"
 
 
 def test_color_enabled_emits_sgr(make_console) -> None:
     """Test that color enabled emits SGR escape sequences in output."""
     c = make_console(color="standard", width=20)
     c.print("ERROR", style="bold red")
-    assert c.file.getvalue() == "\x1b[1;31mERROR\x1b[0m\n"
+    assert c.file.getvalue() == b"\x1b[1;31mERROR\x1b[0m\n"
 
 
 def test_no_color_env_wins(monkeypatch, make_console) -> None:
@@ -51,7 +53,7 @@ def test_auto_detects_truecolor(monkeypatch, make_console) -> None:
 
 def test_non_terminal_defaults_to_no_color(make_console) -> None:
     """Test that non-terminal defaults to no color."""
-    c = make_console(color="auto", force_terminal=None)  # StringIO is not a tty
+    c = make_console(color="auto", force_terminal=None)  # in-memory sink is not a tty
     assert c.color_system is None
 
 
@@ -83,4 +85,28 @@ def test_print_joins_and_terminates(make_console) -> None:
     """Test that print joins and terminates correctly."""
     c = make_console(color=None)
     c.print("a", "b", sep="-", end="!")
-    assert c.file.getvalue() == "a-b!"
+    assert c.file.getvalue() == b"a-b!"
+
+
+def test_resolve_writer_emits_bytes_via_buffer() -> None:
+    """Test that a text stream with a binary .buffer (the stdout path) gets raw bytes."""
+    buf = io.BytesIO()
+    c = Console(file=io.TextIOWrapper(buf, encoding="utf-8"), color_system=None)
+    c.print("hi")
+    assert buf.getvalue() == b"hi\n"
+
+
+def test_resolve_writer_emits_bytes_to_binary_sink() -> None:
+    """Test that a native binary sink receives raw bytes directly."""
+    buf = io.BytesIO()
+    c = Console(file=buf, color_system=None)
+    c.print("hi")
+    assert buf.getvalue() == b"hi\n"
+
+
+def test_resolve_writer_decodes_for_text_sink() -> None:
+    """Test that a pure text sink (no .buffer) receives decoded str."""
+    buf = io.StringIO()
+    c = Console(file=buf, color_system=None)
+    c.print("hi")
+    assert buf.getvalue() == "hi\n"

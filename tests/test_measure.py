@@ -49,4 +49,4 @@ def test_align_centers_table_via_measurement(make_console) -> None:
     c = make_console(width=30)
     c.print(Align.center(t))
     first = c.file.getvalue().splitlines()[0]
-    assert first == " " * 10 + "+---+---+" + " " * 11
+    assert first == b" " * 10 + b"+---+---+" + b" " * 11

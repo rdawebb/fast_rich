@@ -36,6 +36,41 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 _DERIVE = object()
 
 
+class CaptureStdout(io.TextIOWrapper):
+    """A text stream over an in-memory byte buffer, modelling real `sys.stdout`.
+
+    Output is captured as raw bytes; read it back with `getvalue()` (bytes)
+    or the `text` property (decoded str).
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Wrap a fresh BytesIO as a utf-8 text stream.
+
+        Args:
+            kwargs: Extra TextIOWrapper options.
+        """
+        buffer = io.BytesIO()
+        super().__init__(buffer, encoding="utf-8", **kwargs)
+        self._bytes = buffer
+
+    def getvalue(self) -> bytes:
+        """Return the raw bytes written to the underlying binary buffer.
+
+        Returns:
+            The captured output bytes.
+        """
+        return self._bytes.getvalue()
+
+    @property
+    def text(self) -> str:
+        """Return the captured output decoded to str.
+
+        Returns:
+            The captured output as text.
+        """
+        return self.getvalue().decode()
+
+
 def _build_console(
     *,
     width: int = 80,
@@ -45,9 +80,11 @@ def _build_console(
 ) -> Console:
     """Construct a Console writing to an in-memory buffer.
 
-    `force_terminal` defaults to `color is not None` so a color system implies
-    a terminal sink; pass `True`/`False` to model a colorless terminal or a
-    piped color console, or `None` to leave terminal detection to the environment.
+    The sink models real `sys.stdout` (a text stream over a byte buffer), so
+    the console exercises the production byte-output path. `force_terminal`
+    defaults to `color is not None` so a color system implies a terminal sink;
+    pass `True`/`False` to model a colorless terminal or a piped color console,
+    or `None` to leave terminal detection to the environment.
 
     Args:
         width: The console width.
@@ -62,7 +99,7 @@ def _build_console(
         force_terminal = color is not None
 
     return Console(
-        file=io.StringIO(),
+        file=CaptureStdout(),
         width=width,
         color_system=color,
         force_terminal=force_terminal,
@@ -75,8 +112,8 @@ def make_console() -> Callable[..., Console]:
     """Factory for a Console backed by an in-memory buffer.
 
     `make_console(*, width=80, color=None, force_terminal=None, **console_kw)`.
-    Read output back via `console.file.getvalue()` and options via
-    `console.options`.
+    Read output back via `console.file.getvalue()` (bytes) or
+    `console.file.text` (decoded str), and options via `console.options`.
 
     Returns:
         The constructed Console.
@@ -110,7 +147,7 @@ def render() -> Callable[..., str]:
         console = _build_console(**kw)
         console.print(renderable, style=style)
 
-        return console.file.getvalue()
+        return console.file.text
 
     return _render
 

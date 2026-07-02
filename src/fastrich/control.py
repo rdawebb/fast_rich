@@ -1,37 +1,43 @@
 """Terminal control sequences: cursor movement, erasing, and screen control.
 
-String builders for ANSI/VT100 control codes, imported by the console for
-`screen()`, cursor visibility, and the Live refresh loop. Sequences are returned
-as `str`, the console encodes and writes them, and suppresses them entirely when
-the sink is not a terminal. Coordinates in `move_to`/`move_to_column` are 0-based
-and converted to the terminal's 1-based scheme internally.
+Builders for ANSI/VT100 control codes, imported by the console for `screen()`,
+cursor visibility, and the Live refresh loop. Control codes are pure ASCII, so
+sequences are returned as `bytes` (encoded once at module load); the console
+writes them directly and suppresses them entirely when the sink is not a
+terminal. The small, bounded integer cursor moves are `lru_cache`d, since the
+Live loop repositions by a fixed distance every frame. Coordinates in
+`move_to`/`move_to_column` are 0-based and converted to the terminal's 1-based
+scheme internally.
 """
 
 from __future__ import annotations
 
-ESC = "\x1b"
-CSI = ESC + "["
+from functools import lru_cache
+
+ESC = b"\x1b"
+CSI = ESC + b"["
 
 # Cursor visibility
-HIDE_CURSOR = CSI + "?25l"
-SHOW_CURSOR = CSI + "?25h"
+HIDE_CURSOR = CSI + b"?25l"
+SHOW_CURSOR = CSI + b"?25h"
 
 # Alternate screen buffer (enter saves the primary screen, exit restores it)
-ALT_SCREEN_ENTER = CSI + "?1049h"
-ALT_SCREEN_EXIT = CSI + "?1049l"
+ALT_SCREEN_ENTER = CSI + b"?1049h"
+ALT_SCREEN_EXIT = CSI + b"?1049l"
 
 # Absolute positioning / line control
-HOME = CSI + "H"  # Cursor to top-left (row 1, col 1)
-CR = "\r"  # Carriage return: column 1, same row
+HOME = CSI + b"H"  # Cursor to top-left (row 1, col 1)
+CR = b"\r"  # Carriage return: column 1, same row
 
 # Erase
-ERASE_LINE = CSI + "2K"  # Whole current line
-ERASE_TO_LINE_END = CSI + "K"  # From cursor to end of line
-ERASE_DOWN = CSI + "J"  # From cursor to end of screen
-CLEAR = CSI + "2J" + HOME  # Whole screen, then home
+ERASE_LINE = CSI + b"2K"  # Whole current line
+ERASE_TO_LINE_END = CSI + b"K"  # From cursor to end of line
+ERASE_DOWN = CSI + b"J"  # From cursor to end of screen
+CLEAR = CSI + b"2J" + HOME  # Whole screen, then home
 
 
-def up(count: int = 1) -> str:
+@lru_cache(maxsize=64)
+def up(count: int = 1) -> bytes:
     """Return the sequence to move the cursor up `count` rows (0 -> no-op).
 
     Args:
@@ -40,10 +46,11 @@ def up(count: int = 1) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{count}A" if count else ""
+    return b"%b%dA" % (CSI, count) if count else b""
 
 
-def down(count: int = 1) -> str:
+@lru_cache(maxsize=64)
+def down(count: int = 1) -> bytes:
     """Return the sequence to move the cursor down `count` rows (0 -> no-op).
 
     Args:
@@ -52,10 +59,11 @@ def down(count: int = 1) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{count}B" if count else ""
+    return b"%b%dB" % (CSI, count) if count else b""
 
 
-def forward(count: int = 1) -> str:
+@lru_cache(maxsize=64)
+def forward(count: int = 1) -> bytes:
     """Return the sequence to move the cursor forward `count` columns (0 -> no-op).
 
     Args:
@@ -64,10 +72,11 @@ def forward(count: int = 1) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{count}C" if count else ""
+    return b"%b%dC" % (CSI, count) if count else b""
 
 
-def back(count: int = 1) -> str:
+@lru_cache(maxsize=64)
+def back(count: int = 1) -> bytes:
     """Return the sequence to move the cursor back `count` columns (0 -> no-op).
 
     Args:
@@ -76,10 +85,10 @@ def back(count: int = 1) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{count}D" if count else ""
+    return b"%b%dD" % (CSI, count) if count else b""
 
 
-def move_to_column(column: int = 0) -> str:
+def move_to_column(column: int = 0) -> bytes:
     """Return the sequence to move the cursor to a 0-based column on the current row.
 
     Args:
@@ -88,10 +97,10 @@ def move_to_column(column: int = 0) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{column + 1}G"
+    return b"%b%dG" % (CSI, column + 1)
 
 
-def move_to(x: int = 0, y: int = 0) -> str:
+def move_to(x: int = 0, y: int = 0) -> bytes:
     """Return the sequence to move the cursor to 0-based (x, y) = (column, row).
 
     Args:
@@ -101,4 +110,4 @@ def move_to(x: int = 0, y: int = 0) -> str:
     Returns:
         The ANSI escape sequence.
     """
-    return f"{CSI}{y + 1};{x + 1}H"
+    return b"%b%d;%dH" % (CSI, y + 1, x + 1)

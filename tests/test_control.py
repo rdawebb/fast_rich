@@ -7,17 +7,17 @@ from fastrich import control as ctl
 
 def test_cursor_moves_and_zero_is_noop() -> None:
     """Test cursor-move builders, including the 0-count no-op."""
-    assert ctl.up(3) == "\x1b[3A"
-    assert ctl.down(2) == "\x1b[2B"
-    assert ctl.forward(1) == "\x1b[1C"
-    assert ctl.back(5) == "\x1b[5D"
-    assert ctl.up(0) == "" and ctl.down(0) == ""
+    assert ctl.up(3) == b"\x1b[3A"
+    assert ctl.down(2) == b"\x1b[2B"
+    assert ctl.forward(1) == b"\x1b[1C"
+    assert ctl.back(5) == b"\x1b[5D"
+    assert ctl.up(0) == b"" and ctl.down(0) == b""
 
 
 def test_absolute_positioning_is_one_based() -> None:
     """Test that 0-based API coordinates convert to 1-based terminal coords."""
-    assert ctl.move_to_column(0) == "\x1b[1G"
-    assert ctl.move_to(2, 4) == "\x1b[5;3H"  # (x=2, y=4) -> row 5, col 3
+    assert ctl.move_to_column(0) == b"\x1b[1G"
+    assert ctl.move_to(2, 4) == b"\x1b[5;3H"  # (x=2, y=4) -> row 5, col 3
 
 
 def test_screen_brackets_output(make_console) -> None:
@@ -28,7 +28,7 @@ def test_screen_brackets_output(make_console) -> None:
     out = c.file.getvalue()
     assert out.startswith(ctl.ALT_SCREEN_ENTER + ctl.HIDE_CURSOR + ctl.HOME)
     assert out.endswith(ctl.SHOW_CURSOR + ctl.ALT_SCREEN_EXIT)
-    assert "hi" in out
+    assert b"hi" in out
 
 
 def test_screen_restores_on_exception(make_console) -> None:
@@ -46,7 +46,7 @@ def test_control_suppressed_off_terminal(make_console) -> None:
     c.show_cursor(False)
     with c.screen():
         pass
-    assert c.file.getvalue() == ""
+    assert c.file.getvalue() == b""
 
 
 def test_show_cursor_toggles(make_console) -> None:

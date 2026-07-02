@@ -171,4 +171,4 @@ def test_print_plain_table_matches_legacy_output(make_console, sample_table) -> 
     t = sample_table()
     c = make_console(color=None, width=80)
     c.print(t)
-    assert c.file.getvalue() == ASCII_NAME_AGE_TABLE
+    assert c.file.text == ASCII_NAME_AGE_TABLE

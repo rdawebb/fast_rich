@@ -44,7 +44,7 @@ def test_live_animates_and_reflows_mutation(term, one_row_table) -> None:
     assert out.startswith(ctl.HIDE_CURSOR)  # Cursor hidden on start
     assert ctl.ERASE_DOWN in out  # Previous frame repositioned + cleared
     assert ctl.up(4) in out  # 5-line block -> move up 4 to its top
-    assert "Z" in out  # Mutation drawn on refresh
+    assert b"Z" in out  # Mutation drawn on refresh
     assert out.endswith(ctl.SHOW_CURSOR)  # Cursor restored on stop
 
 
@@ -56,8 +56,8 @@ def test_live_non_terminal_writes_final_frame_once(pipe, one_row_table) -> None:
 
     out = c.file.getvalue()
     assert ctl.HIDE_CURSOR not in out and ctl.SHOW_CURSOR not in out
-    assert "9" in out  # Final frame present
-    assert "1" not in out  # Intermediate frame suppressed
+    assert b"9" in out  # Final frame present
+    assert b"1" not in out  # Intermediate frame suppressed
 
 
 def test_live_transient_erases_on_stop(term, one_row_table) -> None:
@@ -77,8 +77,8 @@ def test_live_non_transient_leaves_frame(term, one_row_table) -> None:
         pass
 
     out = c.file.getvalue()
-    assert "1" in out
-    assert out.endswith(b"\n".decode() + ctl.SHOW_CURSOR)
+    assert b"1" in out
+    assert out.endswith(b"\n" + ctl.SHOW_CURSOR)
 
 
 def test_update_without_refresh_defers_draw(term, one_row_table) -> None:
@@ -90,7 +90,7 @@ def test_update_without_refresh_defers_draw(term, one_row_table) -> None:
     live.update(one_row_table("9", "9"), refresh=False)
     assert c.file.getvalue() == before  # No draw yet
     live.refresh()
-    assert "9" in c.file.getvalue()
+    assert b"9" in c.file.getvalue()
     live.stop()
 
 
@@ -148,7 +148,7 @@ def test_auto_refresh_disabled_no_thread(term, one_row_table) -> None:
     live.start()
     assert live._thread is None
     live.update(t("9", "9"))
-    assert "9" in c.file.getvalue()
+    assert b"9" in c.file.getvalue()
     live.stop()
 
 
@@ -176,6 +176,6 @@ def test_progress_context_manager_draws_and_updates(term) -> None:
         tid = p.add_task("work", total=10, completed=0)
         p.advance(tid, 5)
     out = c.file.getvalue()
-    assert "work" in out  # Description drawn
+    assert b"work" in out  # Description drawn
     assert ctl.HIDE_CURSOR in out and ctl.SHOW_CURSOR in out  # Live lifecycle
     assert ctl.ERASE_DOWN in out  # Redrawn on advance
