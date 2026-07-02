@@ -231,7 +231,7 @@ class Text:
         Returns:
             A list of lines, each a list of Segments.
         """
-        from .segment import Segment
+        from .segment import Segment, blank
 
         text = self.plain
         n = len(text)
@@ -297,15 +297,15 @@ class Text:
             pad = width - used
             if pad > 0:
                 if justify == "right":
-                    segs.insert(0, Segment(" " * pad))
+                    segs.insert(0, blank(pad))
 
                 elif justify == "center":
                     left = pad // 2
-                    segs.insert(0, Segment(" " * left))
-                    segs.append(Segment(" " * (pad - left)))
+                    segs.insert(0, blank(left))
+                    segs.append(blank(pad - left))
 
                 else:
-                    segs.append(Segment(" " * pad))
+                    segs.append(blank(pad))
 
             return segs
 

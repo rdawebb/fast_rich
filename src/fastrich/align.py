@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .measure import measure
-from .segment import CachedBytes, LineRenderable, Segment
+from .segment import CachedBytes, LineRenderable, Segment, blank
 
 
 class Align(CachedBytes, LineRenderable):
@@ -117,27 +117,27 @@ class Align(CachedBytes, LineRenderable):
         for line, u in zip(lines, used):
             row = []
             if offset > 0:
-                row.append(Segment(" " * offset))
+                row.append(blank(offset))
 
             row.extend(line)
             right = width - offset - u
             if right > 0:
-                row.append(Segment(" " * right))
+                row.append(blank(right))
 
             rows.append(row)
 
         if self.height and self.vertical:
-            blank = [Segment(" " * width)]
+            blank_row = [blank(width)]
             extra = self.height - len(rows)
             if extra > 0:
                 if self.vertical == "bottom":
-                    rows = [blank] * extra + rows
+                    rows = [blank_row] * extra + rows
 
                 elif self.vertical == "middle":
                     t = extra // 2
-                    rows = [blank] * t + rows + [blank] * (extra - t)
+                    rows = [blank_row] * t + rows + [blank_row] * (extra - t)
 
                 else:
-                    rows = rows + [blank] * extra
+                    rows = rows + [blank_row] * extra
 
         return rows

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .measure import measure
-from .segment import CachedBytes, LineRenderable, Segment
+from .segment import CachedBytes, LineRenderable, Segment, blank
 
 
 def _fit_line(line: list[Segment], width: int) -> list[Segment]:
@@ -57,7 +57,7 @@ def _fit_line(line: list[Segment], width: int) -> list[Segment]:
             break
 
     if total < width:
-        out.append(Segment(" " * (width - total)))
+        out.append(blank(width - total))
 
     return out
 
@@ -121,13 +121,13 @@ class Columns(CachedBytes, LineRenderable):
                 row = []
                 for ci, cell in enumerate(group):
                     if ci:
-                        row.append(Segment(" " * gutter))
+                        row.append(blank(gutter))
 
                     if li < len(cell):
                         row.extend(cell[li])
 
                     else:
-                        row.append(Segment(" " * col_w))
+                        row.append(blank(col_w))
 
                 rows.append(row)
 

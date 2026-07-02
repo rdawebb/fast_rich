@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 from ._width import cell_len
-from .segment import LineRenderable, Segment
+from .segment import LineRenderable, Segment, blank
 
 
 def _normalise(
@@ -74,17 +74,15 @@ class Padding(LineRenderable):
         )
 
         rows = []
-        blank = [Segment(" " * full)]
+        blank_row = [blank(full)]
         for _ in range(top):
-            rows.append(blank)
+            rows.append(blank_row)
 
         for line in child_lines:
             used = sum(cell_len(seg.text) for seg in line)
-            rows.append(
-                [Segment(" " * left), *line, Segment(" " * (inner - used + right))]
-            )
+            rows.append([blank(left), *line, blank(inner - used + right)])
 
         for _ in range(bottom):
-            rows.append(blank)
+            rows.append(blank_row)
 
         return rows

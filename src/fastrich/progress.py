@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from ._width import cell_len
 from .bar import ProgressBar
-from .segment import LineRenderable, Segment
+from .segment import LineRenderable, Segment, blank
 from .text import Text
 
 
@@ -324,7 +324,7 @@ class Progress(LineRenderable):
         line: list[Segment] = []
         for i, item in enumerate(fixed):
             if i:
-                line.append(Segment(" " * gutter))
+                line.append(blank(gutter))
 
             if isinstance(item, (TextColumn, BarColumn, PercentageColumn)):
                 line.extend(

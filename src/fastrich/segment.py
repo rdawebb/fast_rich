@@ -34,6 +34,39 @@ class Segment(NamedTuple):
         return cell_len(self.text)
 
 
+@lru_cache(maxsize=512)
+def _spaces(n: int) -> str:
+    """A run of `n` spaces, cached.
+
+    Space runs repeat heavily across renders (column widths, gutters, padding
+    fills), so caching the string avoids re-allocating it per line.
+
+    Args:
+        n: The number of spaces.
+
+    Returns:
+        A string of `n` spaces.
+    """
+    return " " * n
+
+
+@lru_cache(maxsize=512)
+def blank(n: int) -> Segment:
+    """A style-less Segment of `n` spaces, shared across renders.
+
+    `Segment` is an immutable NamedTuple and the encode path only reads it, so
+    the same blank instance can be shared byte-for-byte wherever justify/gutter/
+    padding fills are needed.
+
+    Args:
+        n: The number of spaces.
+
+    Returns:
+        A shared `Segment` of `n` spaces with no style.
+    """
+    return Segment(_spaces(n), None)
+
+
 def split_lines(segments) -> Iterable[list[Segment]]:
     """Split an iterable of segments into lines on embedded newlines.
 

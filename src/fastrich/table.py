@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .box import SQUARE, Box
-from .segment import CachedBytes, Segment
+from .segment import CachedBytes, Segment, _spaces, blank
 from .style import Style
 from .text import Text
 
@@ -60,15 +60,15 @@ def _plain_line(
     pad = width - cell_len(text)
     if pad > 0:
         if justify == "right":
-            segs.insert(0, Segment(" " * pad))
+            segs.insert(0, blank(pad))
 
         elif justify == "center":
             left = pad // 2
-            segs.insert(0, Segment(" " * left))
-            segs.append(Segment(" " * (pad - left)))
+            segs.insert(0, blank(left))
+            segs.append(blank(pad - left))
 
         else:
-            segs.append(Segment(" " * pad))
+            segs.append(blank(pad))
 
     return segs
 
@@ -98,13 +98,13 @@ def _row_frame(
     Returns:
         The reusable border and padding Segments for the render.
     """
-    pad_str = " " * pad
+    pad_str = _spaces(pad)
     pads = []
     blanks = []
     for w, base in zip(widths, bases):
         fill = base if base else None
         pads.append(Segment(pad_str, fill))
-        blanks.append(Segment(" " * (w + 2 * pad), fill))
+        blanks.append(Segment(_spaces(w + 2 * pad), fill))
 
     return _RowFrame(
         Segment(box.left, bs),
