@@ -30,7 +30,7 @@ class Span(NamedTuple):
 class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
-    __slots__ = ("plain", "style", "_spans")
+    __slots__ = ("plain", "style", "_spans", "_edges")
 
     def __init__(self, text: str = "", style: Style | None = None) -> None:
         """Initialise with optional plain text and base style.
@@ -42,6 +42,7 @@ class Text:
         self.plain = text
         self.style = style  # Base style applied to the whole string
         self._spans: list[Span] = []
+        self._edges: list[int] | None = None  # Cached span-boundary points
 
     def __len__(self) -> int:
         """Return the length of the plain text.
@@ -98,6 +99,8 @@ class Text:
         if style is not None:
             self._spans.append(Span(start, len(self.plain), style))
 
+        self._edges = None  # Plain length and/or spans changed
+
         return self
 
     def stylize(self, style: Style, start: int = 0, end: int | None = None) -> "Text":
@@ -116,10 +119,34 @@ class Text:
 
         if start < end:
             self._spans.append(Span(start, end, style))
+            self._edges = None  # Span was added
 
         return self
 
     stylise = stylize  # British-spelling alias
+
+    def _edge_points(self) -> list[int]:
+        """Sorted span-boundary points, memoised until a span mutator runs.
+
+        A pure function of `(len(plain), spans)`, built in a single pass.
+
+        Returns:
+            The sorted list of clamped span edge points, including 0 and n.
+        """
+        edges = self._edges
+        if edges is None:
+            n = len(self.plain)
+            pts = {0, n}
+
+            for s in self._spans:
+                st = s.start
+                pts.add(st if st > 0 else 0)  # max(0, start)
+                en = s.end
+                pts.add(en if en < n else n)  # min(n, end)
+
+            edges = self._edges = sorted(pts)
+
+        return edges
 
     def _segments(self):
         """Yield one Segment per span-boundary interval.
@@ -144,9 +171,7 @@ class Text:
             yield Segment(text, base if base else None)
             return
 
-        pts = sorted(
-            {0, n} | {max(0, s.start) for s in spans} | {min(n, s.end) for s in spans}
-        )
+        pts = self._edge_points()
 
         for lo, hi in zip(pts, pts[1:]):
             style = base
@@ -244,11 +269,7 @@ class Text:
             base = base.combine(self.style)
 
         spans = self._spans
-        edges = (
-            sorted({max(0, s.start) for s in spans} | {min(n, s.end) for s in spans})
-            if spans
-            else []
-        )
+        edges = self._edge_points() if spans else []
 
         def range_segments(start: int, end: int) -> list[Segment]:
             """Return the segments for the text range.
