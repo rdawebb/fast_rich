@@ -9,7 +9,7 @@ on the next render.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -58,7 +58,9 @@ class Group(LineRenderable):
 
         return Measurement(minimum, maximum).with_maximum(options.max_width).normalise()
 
-    def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
+    def _lines(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[Sequence[Segment]]:
         """Render the group to a list of physical lines.
 
         Args:
@@ -68,7 +70,7 @@ class Group(LineRenderable):
         Returns:
             The children's lines, concatenated top to bottom.
         """
-        lines: list[list[Segment]] = []
+        lines: list[Sequence[Segment]] = []
         for child in self.renderables:
             lines.extend(console.render_lines(child, options))
 

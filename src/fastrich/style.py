@@ -21,6 +21,8 @@ _ATTR_CODES = {
     "conceal": 8,
     "strike": 9,
 }
+# The _ATTR_CODES values as strings, aligned with the first 8 fields of _key.
+_ATTR_CODE_STRS = tuple(str(c) for c in _ATTR_CODES.values())
 # Standard color name -> offset from the base (30 fg / 40 bg), bright adds 60
 _COLORS = {
     "black": 0,
@@ -186,7 +188,7 @@ class Style:
             The SGR prefix for this style.
         """
         if self._sgr is None:
-            codes = [str(c) for name, c in _ATTR_CODES.items() if getattr(self, name)]
+            codes = [c for c, on in zip(_ATTR_CODE_STRS, self._key) if on]
 
             if self.color:
                 codes.append(_color_sgr(self.color, 30))

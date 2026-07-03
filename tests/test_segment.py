@@ -16,19 +16,19 @@ def test_split_lines_basic() -> None:
     """Test that split_lines splits segments into lines on embedded newlines."""
     segs = [Segment("a\nb"), Segment("c")]
     lines = list(split_lines(segs))
-    assert lines == [[Segment("a")], [Segment("b"), Segment("c")]]
+    assert lines == [(Segment("a"),), (Segment("b"), Segment("c"))]
 
 
 def test_split_lines_preserves_style_across_break() -> None:
     """Test that split_lines preserves style across line breaks."""
     s = Style(bold=True)
     lines = list(split_lines([Segment("x\ny", s)]))
-    assert lines == [[Segment("x", s)], [Segment("y", s)]]
+    assert lines == [(Segment("x", s),), (Segment("y", s),)]
 
 
 def test_trailing_newline_yields_empty_line() -> None:
     """Test that split_lines yields an empty line after a newline."""
-    assert list(split_lines([Segment("a\n")])) == [[Segment("a")], []]
+    assert list(split_lines([Segment("a\n")])) == [(Segment("a"),), ()]
 
 
 def test_encode_line_is_memoised() -> None:

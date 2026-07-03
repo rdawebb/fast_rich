@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
-from ._width import cell_len
+from ._width import cell_len, char_cell_len
 from .segment import LineRenderable, Segment
 
 
@@ -33,7 +33,7 @@ def _tile(chars: str, width: int) -> str:
     # Trim to width columns
     total = 0
     for i, ch in enumerate(out):
-        total += cell_len(ch)
+        total += char_cell_len(ch)
         if total >= width:
             return out[: i + 1] + " " * (width - total)
 

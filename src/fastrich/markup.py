@@ -9,6 +9,7 @@ layer over outer ones (matching Text's interval resolution).
 from __future__ import annotations
 
 import re
+from operator import itemgetter
 
 from .style import Style
 from .text import Text
@@ -99,7 +100,7 @@ def render(markup: str, style=None, *, emoji_replace=None, style_resolver=None) 
             spans.append((start, cursor, resolve(defn), s_seq))
 
     text = Text("".join(plain), style=style)
-    for start, end, st, _ in sorted(spans, key=lambda x: x[3]):
+    for start, end, st, _ in sorted(spans, key=itemgetter(3)):
         text.stylize(st, start, end)
 
     return text

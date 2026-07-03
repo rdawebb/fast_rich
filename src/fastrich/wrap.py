@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from ._width import cell_len
+from ._width import cell_len, char_cell_len
 
 
 def fit_end(text: str, width: int) -> int:
@@ -24,7 +24,7 @@ def fit_end(text: str, width: int) -> int:
     """
     total = 0
     for i, ch in enumerate(text):
-        cw = cell_len(ch)
+        cw = char_cell_len(ch)
         if total + cw > width:
             return i
 
@@ -71,7 +71,7 @@ def _hard_break(text: str, start: int, end: int, width: int) -> list[tuple[int, 
     chunks = []
     s, w, i = start, 0, start
     while i < end:
-        cw = cell_len(text[i])
+        cw = char_cell_len(text[i])
         if w + cw > width and i > s:
             chunks.append((s, i))
             s, w = i, 0

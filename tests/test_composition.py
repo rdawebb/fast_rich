@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Sequence
 
 import pytest
 
@@ -168,7 +168,7 @@ def test_group_line_children_skip_resplit(
     calls = {"n": 0}
     original = segment_mod.split_lines
 
-    def counting(segments: Iterable[Segment]) -> Iterable[list[Segment]]:
+    def counting(segments: Iterable[Segment]) -> Iterable[Sequence[Segment]]:
         """Count the number of times split_lines is called."""
         calls["n"] += 1
         return original(segments)

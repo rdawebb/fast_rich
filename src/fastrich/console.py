@@ -8,7 +8,7 @@ import sys
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple, Sequence
 
 if TYPE_CHECKING:
     from .theme import Theme
@@ -321,7 +321,7 @@ class Console:
 
     def render_lines(
         self, renderable, options: ConsoleOptions | None = None
-    ) -> list[list[Segment]]:
+    ) -> list[Sequence[Segment]]:
         """Return a renderable's output as physical lines.
 
         Args:
@@ -536,8 +536,7 @@ class Console:
 
                 no_color, encoding = self.no_color, self.encoding
                 lines = [
-                    encode_line(tuple(line), no_color, encoding)
-                    for line in split_lines(segs)
+                    encode_line(line, no_color, encoding) for line in split_lines(segs)
                 ]
 
                 cached = b"\n".join(lines) + _encode_end(end, encoding)
@@ -576,8 +575,7 @@ class Console:
         no_color, encoding = self.no_color, self.encoding
 
         lines = [
-            encode_line(tuple(line), no_color, encoding)
-            for line in split_lines(segments)
+            encode_line(line, no_color, encoding) for line in split_lines(segments)
         ]
 
         self._write_bytes(b"\n".join(lines) + _encode_end(end, encoding))

@@ -8,17 +8,17 @@ preserving).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
-from ._width import cell_len
+from ._width import cell_len, char_cell_len
 from .measure import measure
 from .segment import CachedBytes, LineRenderable, Segment, blank
 
 
-def _fit_line(line: list[Segment], width: int) -> list[Segment]:
+def _fit_line(line: Sequence[Segment], width: int) -> list[Segment]:
     """Pad or crop one line (list of Segments) to exactly `width` columns.
 
     Args:
@@ -43,7 +43,7 @@ def _fit_line(line: list[Segment], width: int) -> list[Segment]:
             remain = width - total
             acc, w = [], 0
             for ch in seg.text:
-                c = cell_len(ch)
+                c = char_cell_len(ch)
                 if w + c > remain:
                     break
 

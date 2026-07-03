@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from functools import lru_cache
-from typing import TYPE_CHECKING, Iterable, NamedTuple, Optional
+from typing import TYPE_CHECKING, Iterable, NamedTuple, Optional, Sequence
 
 from ._width import cell_len
 from .style import Style
@@ -67,17 +67,19 @@ def blank(n: int) -> Segment:
     return Segment(_spaces(n), None)
 
 
-def split_lines(segments) -> Iterable[list[Segment]]:
+def split_lines(segments) -> Iterable[tuple[Segment, ...]]:
     """Split an iterable of segments into lines on embedded newlines.
 
-    Yields one `list[Segment]` per line. A trailing newline yields a final
-    empty line, mirroring `str.split` semantics.
+    Yields one `tuple[Segment, ...]` per line. A trailing newline yields a
+    final empty line, mirroring `str.split` semantics. Lines are yielded as
+    tuples so callers can hand them straight to `encode_line` (whose LRU key
+    requires a hashable) without re-wrapping.
 
     Args:
         segments: An iterable of `Segment` instances to split into lines.
 
     Yields:
-        One `list[Segment]` per line.
+        One `tuple[Segment, ...]` per line.
     """
     line = []
     for seg in segments:
@@ -92,17 +94,17 @@ def split_lines(segments) -> Iterable[list[Segment]]:
             if part:
                 line.append(Segment(part, seg.style))
 
-            yield line
+            yield tuple(line)
 
             line = []
         if parts[-1]:
             line.append(Segment(parts[-1], seg.style))
 
-    yield line
+    yield tuple(line)
 
 
 @lru_cache(maxsize=8192)
-def encode_line(line: list[Segment], no_color: bool, encoding: str) -> bytes:
+def encode_line(line: tuple[Segment, ...], no_color: bool, encoding: str) -> bytes:
     """Encode one line (a tuple of Segments) to bytes, applying color policy.
 
     Memoised on (line, no_color, encoding): identical lines reuse their bytes.
@@ -164,7 +166,7 @@ class LineRenderable:
 
     def _lines(
         self, console: Console, options: ConsoleOptions
-    ) -> list[list[Segment]]:  # pragma: no cover - interface
+    ) -> Sequence[Sequence[Segment]]:  # pragma: no cover - interface
         """Interface for subclasses to implement line-based rendering.
 
         Args:
@@ -181,7 +183,7 @@ class LineRenderable:
 
     def __rich_lines__(
         self, console: Console, options: ConsoleOptions
-    ) -> list[list[Segment]]:
+    ) -> Sequence[Sequence[Segment]]:
         """Return the renderable's lines as a list of lists of segments.
 
         Args:
@@ -251,15 +253,15 @@ class CachedBytes:
 
     def _iter_lines(
         self, console: Console, options: ConsoleOptions
-    ) -> Iterable[list[Segment]]:
-        """Return an iterable of lines, each a list of Segments.
+    ) -> Iterable[Sequence[Segment]]:
+        """Return an iterable of lines, each a sequence of Segments.
 
         Args:
             console: The console to render to.
             options: The console options for this render.
 
         Returns:
-            An iterable of lines, each a list of Segments.
+            An iterable of lines, each a sequence of Segments.
         """
         fn = getattr(self, "__rich_lines__", None)
         if fn is not None:
