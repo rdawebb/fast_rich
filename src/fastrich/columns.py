@@ -79,6 +79,7 @@ class Columns(CachedBytes, LineRenderable):
         padding: int = 1,
         width: int | None = None,
         style: Style | None = None,
+        expand: bool = False,
     ) -> None:
         """Initialise a Columns layout with the given renderables and optional padding and width.
 
@@ -87,12 +88,15 @@ class Columns(CachedBytes, LineRenderable):
             padding: The padding between columns.
             width: The fixed column width override.
             style: The style to apply to the columns.
+            expand: If True, expands columns to fill available width, else size
+                to the content plus padding.
         """
         self._init_byte_cache()
         self.renderables = list(renderables)
         self.padding = padding
         self.width = width  # Fixed column width override
         self.style = style or NULL_STYLE
+        self.expand = expand
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Layout the renderables into columns.
@@ -116,6 +120,9 @@ class Columns(CachedBytes, LineRenderable):
         )
         col_w = max(1, min(natural, avail))
         ncols = max(1, (avail + gutter) // (col_w + gutter))
+
+        if self.expand and self.width is None:
+            col_w = max(1, (avail - gutter * (ncols - 1)) // ncols)
 
         cells = []
         for it in items:

@@ -175,6 +175,7 @@ class Table(CachedBytes):
         header_style: Style | None = None,
         border_style: Style | None = None,
         style: Style | None = None,
+        expand: bool = False,
     ) -> None:
         """Initialise a Table with optional headers and styling.
 
@@ -186,6 +187,7 @@ class Table(CachedBytes):
             header_style: The style for the header row.
             border_style: The style for the table border.
             style: Base style for whole table, cell/column styles compose over.
+            expand: If True, stretch columns to fill available width.
         """
         self._init_byte_cache()
         self.columns: list[Column] = []
@@ -208,6 +210,8 @@ class Table(CachedBytes):
         )
         self.border_style = border_style
         self.style = style or NULL_STYLE
+        self.expand = expand
+
         for h in headers:
             self.add_column(h)
 
@@ -238,6 +242,7 @@ class Table(CachedBytes):
         self.columns.append(Column(header, **kwargs))
         for row in self.rows:
             row.append("")  # New column's cell for pre-existing rows
+
         self._row_cache = [None] * len(self.rows)  # Structure changed
         self._bump()
 
@@ -376,12 +381,13 @@ class Table(CachedBytes):
 
         return widths
 
-    def _fit_to(self, widths: list[int], avail: int) -> list[int]:
+    def _fit_to(self, widths: list[int], avail: int, expand: bool = False) -> list[int]:
         """Fit the column widths to the available width, scaling as needed.
 
         Args:
             widths: The column widths.
             avail: The available width.
+            expand: If True, expand columns proportionally to fill available width.
 
         Returns:
             The fitted column widths.
@@ -392,7 +398,21 @@ class Table(CachedBytes):
 
         total = sum(widths)
         if total <= avail:
-            return widths
+            if not expand or total == avail or total == 0:
+                return widths
+
+            # Expand to fill, distrubute slack proportionally
+            extra = avail - total
+            grown = [w + extra * w // total for w in widths]
+            diff = avail - sum(grown)
+
+            i = 0
+            while diff > 0:
+                grown[i % n] += 1
+                diff -= 1
+                i += 1
+
+            return grown
 
         scaled = [max(1, w * avail // total) for w in widths]
         diff = avail - sum(scaled)
@@ -513,7 +533,7 @@ class Table(CachedBytes):
         headers, rows, nat = self._resolve(console)
         pad = self.padding
         overhead = (ncols + 1) + 2 * pad * ncols
-        widths = self._fit_to(nat, options.max_width - overhead)
+        widths = self._fit_to(nat, options.max_width - overhead, self.expand)
         wkey = tuple(widths)  # Row reflows if the resolved widths change
 
         b, bs = self.box, self.border_style

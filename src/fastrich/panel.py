@@ -45,6 +45,7 @@ class Panel(CachedBytes, LineRenderable):
         style: Style | None = None,
         padding: tuple[int, int] = (0, 1),
         width: int | None = None,
+        expand: bool = True,
     ) -> None:
         """Initialise a Panel with the given renderable and optional title.
 
@@ -60,6 +61,7 @@ class Panel(CachedBytes, LineRenderable):
             style: The style to use for the panel's content.
             padding: The padding to apply around the panel.
             width: The width of the panel, or `None` for automatic width.
+            expand: If True, stretch to the available width, else fit content width.
         """
         self._init_byte_cache()
         self.renderable = renderable
@@ -73,6 +75,7 @@ class Panel(CachedBytes, LineRenderable):
         self.style = style or NULL_STYLE
         self.padding = padding
         self.width = width
+        self.expand = expand
 
     def __rich_measure__(
         self, console: Console, options: ConsoleOptions
@@ -229,8 +232,28 @@ class Panel(CachedBytes, LineRenderable):
         """
         b = self.box
         bs = self.style.combine(self.border_style) if self.border_style else self.style
-        bs = bs or None
-        outer = min(self.width or options.max_width, options.max_width)
+        bs = bs or None  # NULL_STYLE -> None
+
+        if self.width is not None:
+            outer = min(self.width, options.max_width)
+
+        elif self.expand:
+            outer = options.max_width
+
+        else:
+            from .measure import measure
+
+            _, h_right, _, h_left = self._padding4()
+            m = measure(
+                console,
+                self.renderable,
+                options._replace(
+                    max_width=max(0, options.max_width - 2 - h_left - h_right)
+                ),
+            )
+
+            outer = min(options.max_width, m.maximum + 2 + h_left + h_right)
+
         inner = max(0, outer - 2)
 
         padded = Padding(self.renderable, self.padding)

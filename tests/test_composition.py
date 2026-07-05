@@ -86,7 +86,6 @@ def test_group_stacks_strings(render) -> None:
 def test_group_orders_mixed_children(render) -> None:
     """Test that a Group renders heterogeneous children top to bottom."""
     from fastrich.group import Group
-    from fastrich.rule import Rule
     from fastrich.table import Table
 
     t = Table("A", box=ASCII)
@@ -101,7 +100,6 @@ def test_group_orders_mixed_children(render) -> None:
 def test_group_nests_in_panel(render) -> None:
     """Test that a Group composes as a child of a line-grouped container."""
     from fastrich.group import Group
-    from fastrich.panel import Panel
 
     out = render(Panel(Group("a", "b"), box=ASCII), width=9)
     lines = out.splitlines()
@@ -162,7 +160,6 @@ def test_group_line_children_skip_resplit(
     import fastrich.console as console_mod
     import fastrich.segment as segment_mod
     from fastrich.group import Group
-    from fastrich.rule import Rule
     from fastrich.table import Table
 
     calls = {"n": 0}
@@ -182,3 +179,106 @@ def test_group_line_children_skip_resplit(
     c.print(Group(Rule(), t))
 
     assert calls["n"] == 0
+
+
+def test_rule_align_left_and_right(render) -> None:
+    """Test that a Rule honors left and right title alignment."""
+    assert render(Rule("hi", align="left"), width=20).rstrip() == "─ hi ───────────────"
+    assert (
+        render(Rule("hi", align="right"), width=20).rstrip() == "─────────────── hi ─"
+    )
+
+
+def test_panel_title_align(render) -> None:
+    """Test that a Panel honors left/center/right title alignment."""
+    left = render(
+        Panel("x", box=ASCII, width=16, title="T", title_align="left"), width=20
+    )
+    right = render(
+        Panel("x", box=ASCII, width=16, title="T", title_align="right"), width=20
+    )
+    assert left.splitlines()[0] == "+- T ----------+"
+    assert right.splitlines()[0] == "+---------- T -+"
+
+
+def test_panel_subtitle(render) -> None:
+    """Test that a Panel renders a subtitle in the bottom rule."""
+    out = render(
+        Panel("x", box=ASCII, width=16, subtitle="S", subtitle_align="right"), width=20
+    )
+    assert out.splitlines()[-1] == "+---------- S -+"
+
+
+def test_panel_style_applies_to_border_and_contents(render) -> None:
+    """Test that the panel base style colors both border and contents."""
+    from fastrich.style import Style
+
+    out = render(
+        Panel("x", box=ASCII, width=8, style=Style(color="red")), color="standard"
+    )
+    lines = [ln for ln in out.splitlines() if ln]
+    assert all(ln.startswith("\x1b[31m") for ln in lines)  # Every row styled red
+
+
+def test_panel_text_title_carries_own_style(render) -> None:
+    """Test that a Text title renders with its own styling, not title_style."""
+    from fastrich.text import Text
+
+    out = render(Panel("x", box=ASCII, width=12, title=Text("T")), width=20)
+    assert " T " in out.splitlines()[0]  # Text title placed in the top rule
+
+
+def test_style_base_on_layout_renderables(render) -> None:
+    """Test that the base `style` colors Table, Padding, Align, and Columns."""
+    from fastrich.align import Align
+    from fastrich.columns import Columns
+    from fastrich.style import Style
+    from fastrich.table import Table
+
+    red = Style(color="red")
+    t = Table("A", box=ASCII, style=red)
+    t.add_row("x")
+    for r in (
+        t,
+        Padding("hi", (0, 1), style=red),
+        Align("hi", "center", style=red),
+        Columns(["a", "b"], style=red),
+    ):
+        assert "\x1b[31m" in render(r, color="standard", width=16)
+
+
+def test_child_style_composes_over_base(render) -> None:
+    """Test that a child's own style wins over the base style."""
+    from fastrich.style import Style
+    from fastrich.text import Text
+
+    child = Text("hi", style=Style(color="blue"))
+    out = render(
+        Padding(child, (0, 0), style=Style(color="red")), color="standard", width=8
+    )
+    assert "\x1b[34m" in out  # Child blue wins on its run
+    assert "\x1b[31m" in out  # Base red on the padding fill
+
+
+def test_expand_defaults_and_overrides(render) -> None:
+    """Test Rich-matching expand defaults and overrides across renderables."""
+    from fastrich.columns import Columns
+    from fastrich.table import Table
+
+    # Table default (False) fits, expand=True fills to width
+    t = Table("A", "B", box=ASCII)
+    t.add_row("x", "y")
+    te = Table("A", "B", box=ASCII, expand=True)
+    te.add_row("x", "y")
+    assert len(render(t, width=30).splitlines()[0]) < 30
+    assert len(render(te, width=30).splitlines()[0]) == 30
+
+    # Padding default (True) fills, expand=False fits content + padding
+    assert render(Padding("hi", (0, 1)), width=20).rstrip("\n").endswith("   ")
+    assert render(Padding("hi", (0, 1), expand=False), width=20) == " hi \n"
+
+    # Columns expand grows each column wider than its natural fit
+    items = ["x" * 12, "y" * 12]  # Wide -> few columns -> expand grows them
+    fit = render(Columns(items), width=30).splitlines()[0]
+    grown = render(Columns(items, expand=True), width=30).splitlines()[0]
+    assert len(grown) > len(fit)
