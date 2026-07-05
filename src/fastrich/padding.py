@@ -12,14 +12,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .style import Style
 
 from ._width import cell_len
-from .segment import LineRenderable, Segment, blank
+from .segment import LineRenderable, Segment, blank, compose_lines
+from .style import NULL_STYLE
 
 
-def _normalise(
-    pad,
-) -> tuple[int, int, int, int]:
+def _normalise(pad) -> tuple[int, int, int, int]:
     """Normalise the pad value to a (top, right, bottom, left) tuple.
 
     Args:
@@ -44,15 +44,17 @@ def _normalise(
 class Padding(LineRenderable):
     """A wrapper around a renderable that adds padding around it."""
 
-    def __init__(self, renderable, pad=(0, 1)) -> None:
+    def __init__(self, renderable, pad=(0, 1), *, style: Style | None = None) -> None:
         """Initialise a Padding instance.
 
         Args:
             renderable: The renderable to wrap.
             pad: The padding to add around the renderable.
+            style: Base style, child style composes over it.
         """
         self.renderable = renderable
         self.pad = _normalise(pad)
+        self.style = style or NULL_STYLE
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the wrapped renderable with padding around it.
@@ -84,4 +86,4 @@ class Padding(LineRenderable):
         for _ in range(bottom):
             rows.append(blank_row)
 
-        return rows
+        return compose_lines(rows, self.style)

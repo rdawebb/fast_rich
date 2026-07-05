@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .style import Style
 
 from ._width import cell_len, char_cell_len
 from .measure import measure
-from .segment import CachedBytes, LineRenderable, Segment, blank
+from .segment import CachedBytes, LineRenderable, Segment, blank, compose_lines
+from .style import NULL_STYLE
 
 
 def _fit_line(line: Sequence[Segment], width: int) -> list[Segment]:
@@ -71,7 +73,12 @@ class Columns(CachedBytes, LineRenderable):
     """
 
     def __init__(
-        self, renderables, *, padding: int = 1, width: int | None = None
+        self,
+        renderables,
+        *,
+        padding: int = 1,
+        width: int | None = None,
+        style: Style | None = None,
     ) -> None:
         """Initialise a Columns layout with the given renderables and optional padding and width.
 
@@ -79,11 +86,13 @@ class Columns(CachedBytes, LineRenderable):
             renderables: The renderables to layout into columns.
             padding: The padding between columns.
             width: The fixed column width override.
+            style: The style to apply to the columns.
         """
         self._init_byte_cache()
         self.renderables = list(renderables)
         self.padding = padding
         self.width = width  # Fixed column width override
+        self.style = style or NULL_STYLE
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Layout the renderables into columns.
@@ -131,4 +140,4 @@ class Columns(CachedBytes, LineRenderable):
 
                 rows.append(row)
 
-        return rows
+        return compose_lines(rows, self.style)

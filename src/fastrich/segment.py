@@ -7,15 +7,16 @@ memoised per line, so an unchanged line reuses its bytes instead of re-encoding.
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from functools import lru_cache
 from typing import TYPE_CHECKING, Iterable, NamedTuple, Sequence
-
-from ._width import cell_len
-from .style import Style
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .style import Style
+
+from collections import OrderedDict
+from functools import lru_cache
+
+from ._width import cell_len
 
 
 class Segment(NamedTuple):
@@ -299,3 +300,24 @@ class CachedBytes:
         lru_set(cache, key, cached, self._max_byte_contexts)
 
         return cached
+
+
+def compose_lines(
+    lines: Iterable[list[Segment]], base: Style | None = None
+) -> list[list[Segment]]:
+    """Layer a base Style under every segment in each line (no-op if base is empty).
+
+    Args:
+        lines: An iterable of lines, each a list of Segments.
+        base: The base Style, child segment styles compose over it.
+
+    Returns:
+        The lines with the base style applied beneath each segment's style.
+    """
+    if not base:
+        return list(lines)
+
+    return [
+        [Segment(s.text, base.combine(s.style) if s.style else base) for s in line]
+        for line in lines
+    ]

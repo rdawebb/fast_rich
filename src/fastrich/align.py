@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .style import Style
 
 from ._width import cell_len
 from .measure import measure
-from .segment import CachedBytes, LineRenderable, Segment, blank
+from .segment import CachedBytes, LineRenderable, Segment, blank, compose_lines
+from .style import NULL_STYLE
 
 
 class Align(CachedBytes, LineRenderable):
@@ -32,6 +34,7 @@ class Align(CachedBytes, LineRenderable):
         *,
         vertical: Literal["top", "middle", "bottom"] | None = None,
         height: int | None = None,
+        style: Style | None = None,
     ) -> None:
         """Initialise an Align instance.
 
@@ -40,12 +43,14 @@ class Align(CachedBytes, LineRenderable):
             align: The alignment to apply ("left", "center", or "right").
             vertical: The vertical alignment to apply (if height is given).
             height: The height to align within (if vertical is given).
+            style: The style to apply to the aligned renderable.
         """
         self._init_byte_cache()
         self.renderable = renderable
         self.align = align
         self.vertical = vertical
         self.height = height
+        self.style = style or NULL_STYLE
 
     @classmethod
     def center(cls, renderable, **kwargs) -> "Align":
@@ -140,4 +145,4 @@ class Align(CachedBytes, LineRenderable):
                 else:
                     rows = rows + [blank_row] * extra
 
-        return rows
+        return compose_lines(rows, self.style)

@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 from ._width import cell_len
 from .box import SQUARE, Box
-from .segment import CachedBytes, Segment, _spaces, blank
-from .style import Style
+from .segment import CachedBytes, Segment, _spaces, blank, compose_lines
+from .style import NULL_STYLE, Style
 from .text import Text
 
 _NEWLINE = Segment("\n")
@@ -174,6 +174,7 @@ class Table(CachedBytes):
         show_header: bool = True,
         header_style: Style | None = None,
         border_style: Style | None = None,
+        style: Style | None = None,
     ) -> None:
         """Initialise a Table with optional headers and styling.
 
@@ -184,6 +185,7 @@ class Table(CachedBytes):
             show_header: Whether to show the header row.
             header_style: The style for the header row.
             border_style: The style for the table border.
+            style: Base style for whole table, cell/column styles compose over.
         """
         self._init_byte_cache()
         self.columns: list[Column] = []
@@ -205,6 +207,7 @@ class Table(CachedBytes):
             header_style if header_style is not None else Style(bold=True)
         )
         self.border_style = border_style
+        self.style = style or NULL_STYLE
         for h in headers:
             self.add_column(h)
 
@@ -569,7 +572,7 @@ class Table(CachedBytes):
 
         lines.append(hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right))
 
-        return lines
+        return compose_lines(lines, self.style)
 
     def __rich_lines__(
         self, console: Console, options: ConsoleOptions
