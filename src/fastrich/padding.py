@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
 
-
 from ._width import cell_len
 from .segment import LineRenderable, Segment, blank
 

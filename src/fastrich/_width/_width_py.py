@@ -1,9 +1,5 @@
 """Width measurement module - Tier 1/2/3 dispatch.
 
-This module is the reference implementation behind the public `cell_len` /
-`char_width` boundary. A Rust implementation (`_width_rs`) may replace it
-later without touching callers.
-
 Input is printable text: no control characters, tabs, or escape sequences.
 `cell_len` returns the number of terminal columns the string occupies.
 
@@ -34,10 +30,10 @@ _A_LOS = [r[0] for r in _A_RANGES]
 
 # Codepoints that trigger Tier 3
 _ZWJ = 0x200D
-_VS15 = 0xFE0E  # text-presentation selector
-_VS16 = 0xFE0F  # emoji-presentation selector
-_RI_LO, _RI_HI = 0x1F1E6, 0x1F1FF  # regional indicators
-_MOD_LO, _MOD_HI = 0x1F3FB, 0x1F3FF  # emoji skin-tone modifiers
+_VS15 = 0xFE0E  # Text-presentation selector
+_VS16 = 0xFE0F  # Emoji-presentation selector
+_RI_LO, _RI_HI = 0x1F1E6, 0x1F1FF  # Regional indicators
+_MOD_LO, _MOD_HI = 0x1F3FB, 0x1F3FF  # Emoji skin-tone modifiers
 
 
 def _in_ranges(
@@ -77,10 +73,10 @@ def char_width(cp: int, east_asian_width: bool = False) -> int:
     Returns:
         The width of the codepoint, 0, 1, or 2.
     """
-    if 0x20 <= cp < 0x7F:  # printable ASCII fast path
+    if 0x20 <= cp < 0x7F:  # Printable ASCII fast path
         return 1
 
-    if cp < 0x20 or cp == 0x7F:  # control (out of contract)
+    if cp < 0x20 or cp == 0x7F:  # Control (out of contract)
         return 0
 
     hit = _in_ranges(cp, _W_RANGES, _W_LOS)
@@ -152,7 +148,7 @@ def _cell_len_clusters(text: str, eaw: bool = False) -> int:
                 i += 2
 
             else:
-                total += 2  # lone RI: terminal-dependent, treated as wide
+                total += 2  # Lone RI: terminal-dependent, treated as wide
                 i += 1
 
             continue
@@ -168,25 +164,25 @@ def _cell_len_clusters(text: str, eaw: bool = False) -> int:
                     i += 2
                     continue
 
-                i += 1  # trailing ZWJ, ignore
+                i += 1  # Trailing ZWJ, ignore
                 break
 
-            if ncp == _VS16:  # force emoji presentation
+            if ncp == _VS16:  # Force emoji presentation
                 w = 2
                 i += 1
                 continue
 
-            if ncp == _VS15:  # force text presentation
+            if ncp == _VS15:  # Force text presentation
                 w = 1
                 i += 1
                 continue
 
-            if _MOD_LO <= ncp <= _MOD_HI:  # skin-tone modifier
+            if _MOD_LO <= ncp <= _MOD_HI:  # Skin-tone modifier
                 w = 2
                 i += 1
                 continue
 
-            if char_width(ncp, eaw) == 0:  # combining mark
+            if char_width(ncp, eaw) == 0:  # Combining mark
                 i += 1
                 continue
 

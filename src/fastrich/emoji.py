@@ -14,7 +14,7 @@ import re
 from ._emoji_table import EMOJI
 
 # A shortcode is a run of lowercase letters, digits, underscore, plus or hyphen,
-# delimited by single colons. Unknown names are left verbatim by the callback.
+# delimited by single colons; unknown names are left verbatim by the callback
 _CODE_RE = re.compile(r":([a-z0-9_+\-]+):")
 
 

@@ -7,17 +7,20 @@ console render protocol.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
     from .measure import Measurement
     from .style import Style
+    from .text import Text
 
 from ._width import cell_len
 from .box import SQUARE
 from .padding import Padding
 from .segment import CachedBytes, LineRenderable, Segment
+from .style import NULL_STYLE
 
 
 class Panel(CachedBytes, LineRenderable):
@@ -33,9 +36,13 @@ class Panel(CachedBytes, LineRenderable):
         renderable,
         *,
         box=SQUARE,
-        title: str = "",
+        title: str | Text = "",
+        title_align: str = "center",
+        subtitle: str | Text = "",
+        subtitle_align: str = "center",
         border_style: Style | None = None,
         title_style: Style | None = None,
+        style: Style | None = None,
         padding: tuple[int, int] = (0, 1),
         width: int | None = None,
     ) -> None:
@@ -45,8 +52,12 @@ class Panel(CachedBytes, LineRenderable):
             renderable: The renderable to frame in the panel.
             box: The box to use for the panel's border.
             title: The title to display in the top rule.
+            title_align: The alignment of the title ("left", "center", or "right").
+            subtitle: The subtitle to display in the bottom rule.
+            subtitle_align: The alignment of the subtitle ("left", "center", or "right").
             border_style: The style to use for the panel's border.
             title_style: The style to use for the panel's title.
+            style: The style to use for the panel's content.
             padding: The padding to apply around the panel.
             width: The width of the panel, or `None` for automatic width.
         """
@@ -54,8 +65,12 @@ class Panel(CachedBytes, LineRenderable):
         self.renderable = renderable
         self.box = box
         self.title = title
+        self.title_align = title_align
+        self.subtitle = subtitle
+        self.subtitle_align = subtitle_align
         self.border_style = border_style
         self.title_style = title_style
+        self.style = style or NULL_STYLE
         self.padding = padding
         self.width = width
 
@@ -98,6 +113,110 @@ class Panel(CachedBytes, LineRenderable):
 
         return _normalise(self.padding)
 
+    def _compose(self, segments: Sequence[Segment]) -> list[Segment]:
+        """Layer the panel's base style under each segment (no-op if unset).
+
+        Args:
+            segments: The list of segments to compose.
+
+        Returns:
+            The composed list of segments.
+        """
+        if not self.style:
+            return list(segments)
+
+        base = self.style
+
+        return [
+            Segment(s.text, base.combine(s.style) if s.style else base)
+            for s in segments
+        ]
+
+    def _label_segments(
+        self,
+        console: Console,
+        options: ConsoleOptions,
+        label: str | Text,
+        label_style: Style | None,
+    ) -> tuple[list[Segment] | None, int]:
+        """Return (segments, width) for a title/subtitle label, or (None, 0).
+
+        A str label becomes one styled segment; a Text label renders its own
+        segments. Both are wrapped in single spaces and get the panel base style.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+            label: The label text or Text object.
+            label_style: The label's style.
+
+        Returns:
+            The composed list of segments and the label's width.
+        """
+        if not label:
+            return None, 0
+
+        if hasattr(label, "plain"):  # Text
+            inner = list(console.render(label, options))
+            segs = [Segment(" "), *inner, Segment(" ")]
+
+        else:
+            segs = [Segment(f" {label} ", label_style)]
+
+        width = sum(cell_len(s.text) for s in segs)
+
+        return self._compose(segs), width
+
+    def _rule_row(
+        self,
+        left: str,
+        fill: str,
+        right: str,
+        label_segs,
+        label_width: int,
+        align: str,
+        inner: int,
+        bs: Style | None,
+    ) -> list[Segment]:
+        """Build a top/bottom border row with an optionally aligned label.
+
+        Args:
+            left: The left border character.
+            fill: The fill character for the rule.
+            right: The right border character.
+            label_segs: The label's composed segments, or None if no label.
+            label_width: The label's width in terminal columns.
+            align: The label alignment, one of "left", "center", or "right".
+            inner: The rule's inner width in terminal columns.
+            bs: The border style.
+
+        Returns:
+            The composed list of segments for the rule row.
+        """
+        if label_segs is None or label_width >= inner:
+            return [Segment(left, bs), Segment(fill * inner, bs), Segment(right, bs)]
+
+        space = inner - label_width
+        if align == "left":
+            lfill = 1
+
+        elif align == "right":
+            lfill = space - 1
+
+        else:
+            lfill = space // 2
+
+        lfill = max(0, min(lfill, space))
+        rfill = space - lfill
+
+        return [
+            Segment(left, bs),
+            Segment(fill * lfill, bs),
+            *label_segs,
+            Segment(fill * rfill, bs),
+            Segment(right, bs),
+        ]
+
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the panel's body to lines of styled segments.
 
@@ -108,49 +227,51 @@ class Panel(CachedBytes, LineRenderable):
         Returns:
             A list of lists of styled segments, one list per line.
         """
-        b, bs = self.box, self.border_style
+        b = self.box
+        bs = self.style.combine(self.border_style) if self.border_style else self.style
+        bs = bs or None
         outer = min(self.width or options.max_width, options.max_width)
         inner = max(0, outer - 2)
 
         padded = Padding(self.renderable, self.padding)
         body = console.render_lines(padded, options._replace(max_width=inner))
 
-        rows = []
-        title = self.title.plain if hasattr(self.title, "plain") else str(self.title)
-        label = f" {title} " if title else ""
-        tlen = cell_len(label)
+        title_segs, title_w = self._label_segments(
+            console, options, self.title, self.title_style
+        )
+        sub_segs, sub_w = self._label_segments(
+            console, options, self.subtitle, self.title_style
+        )
 
-        if label and tlen < inner:
-            side = inner - tlen
-            left = side // 2
-            rows.append(
-                [
-                    Segment(b.top_left, bs),
-                    Segment(b.top * left, bs),
-                    Segment(label, self.title_style),
-                    Segment(b.top * (side - left), bs),
-                    Segment(b.top_right, bs),
-                ]
+        rows = [
+            self._rule_row(
+                b.top_left,
+                b.top,
+                b.top_right,
+                title_segs,
+                title_w,
+                self.title_align,
+                inner,
+                bs,
             )
-
-        else:
-            rows.append(
-                [
-                    Segment(b.top_left, bs),
-                    Segment(b.top * inner, bs),
-                    Segment(b.top_right, bs),
-                ]
-            )
+        ]
 
         for line in body:  # Each already inner-wide
-            rows.append([Segment(b.left, bs), *line, Segment(b.right, bs)])
+            rows.append(
+                [Segment(b.left, bs), *self._compose(line), Segment(b.right, bs)]
+            )
 
         rows.append(
-            [
-                Segment(b.bottom_left, bs),
-                Segment(b.bottom * inner, bs),
-                Segment(b.bottom_right, bs),
-            ]
+            self._rule_row(
+                b.bottom_left,
+                b.bottom,
+                b.bottom_right,
+                sub_segs,
+                sub_w,
+                self.subtitle_align,
+                inner,
+                bs,
+            )
         )
 
         return rows

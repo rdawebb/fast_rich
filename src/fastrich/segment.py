@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from functools import lru_cache
-from typing import TYPE_CHECKING, Iterable, NamedTuple, Optional, Sequence
+from typing import TYPE_CHECKING, Iterable, NamedTuple, Sequence
 
 from ._width import cell_len
 from .style import Style
@@ -22,7 +22,7 @@ class Segment(NamedTuple):
     """A run of text with one style."""
 
     text: str
-    style: Optional[Style] = None
+    style: Style | None = None
 
     @property
     def cell_len(self) -> int:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .style import Style
 
 from ._width import cell_len, char_cell_len
 from .segment import LineRenderable, Segment
@@ -44,7 +45,13 @@ class Rule(LineRenderable):
     """A horizontal rule that spans the width of the terminal."""
 
     def __init__(
-        self, title="", *, characters="─", style=None, title_style=None
+        self,
+        title: str = "",
+        *,
+        characters: str = "─",
+        style: Style | None = None,
+        title_style: Style | None = None,
+        align: str = "center",
     ) -> None:
         """Initialise a Rule with the given title and character set.
 
@@ -53,11 +60,13 @@ class Rule(LineRenderable):
             characters: The characters to use for the rule.
             style: The style to apply to the rule.
             title_style: The style to apply to the title.
+            align: The alignment of the rule and title.
         """
         self.title = title
         self.characters = characters or "─"
         self.style = style
         self.title_style = title_style
+        self.align = align
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the rule as a series of styled segments.
@@ -80,7 +89,12 @@ class Rule(LineRenderable):
             return [[Segment(_tile(self.characters, width), self.style)]]
 
         side = width - tlen
-        left = side // 2
+        if self.align == "left":
+            left = 1
+        elif self.align == "right":
+            left = side - 1
+        else:
+            left = side // 2
 
         return [
             [

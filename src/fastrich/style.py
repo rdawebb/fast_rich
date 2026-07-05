@@ -167,7 +167,7 @@ class Style:
 
         return f"Style({set_fields})"
 
-    def combine(self, other: "Style") -> "Style":
+    def combine(self, other: Style) -> Style:
         """Layer `other` over `self`: set fields in other win, else inherit.
 
         Args:
