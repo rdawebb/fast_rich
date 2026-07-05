@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
+    from .spinner import Spinner
     from .style import Style
 
 from dataclasses import dataclass, field
+from time import monotonic
 
 from ._width import cell_len
 from .bar import ProgressBar
@@ -25,6 +27,36 @@ class Task:
     total: float
     completed: float
     fields: dict = field(default_factory=dict)
+    start_time: float | None = None
+
+    @property
+    def elapsed(self) -> float | None:
+        """Seconds since the task started, or None if it hasn't started.
+
+        Returns:
+            Elapsed seconds, or None.
+        """
+        if self.start_time is None:
+            return None
+
+        return monotonic() - self.start_time
+
+    @property
+    def remaining(self) -> float | None:
+        """Estimated seconds remaining from the current rate, or None if unknown.
+
+        Returns:
+            Estimated remaining seconds, or None when not yet estimable.
+        """
+        elapsed = self.elapsed
+        if not self.total or not self.completed or not elapsed:
+            return None
+
+        rate = self.completed / elapsed
+        if rate <= 0:
+            return None
+
+        return max(0.0, (self.total - self.completed) / rate)
 
     @property
     def percentage(self) -> float:
@@ -140,7 +172,114 @@ class BarColumn:
         )
 
 
-Column = TextColumn | BarColumn | PercentageColumn
+def _format_time(seconds: float | None) -> str:
+    """Format seconds as h:mm:ss, or a placeholder when unknown.
+
+    Args:
+        seconds: A duration in seconds, or None.
+
+    Returns:
+        The formatted duration, or "-:--:--" when None.
+    """
+    if seconds is None:
+        return "-:--:--"
+
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+class SpinnerColumn:
+    """Display an animated spinner (advances with wall-clock time)."""
+
+    flex = False
+    time_based = True
+
+    def __init__(self, name: str = "dots", *, style: Style | None = None) -> None:
+        """Initialise the SpinnerColumn with the given name and style.
+
+        Args:
+            name: The name of the spinner animation (default "dots").
+            style: The style to apply to the spinner (default None).
+        """
+        from .spinner import Spinner
+
+        self.spinner = Spinner(name=name, style=style)
+
+    def __call__(self, task: Task) -> Spinner:
+        """Return the shared spinner (time-synced across tasks).
+
+        Args:
+            task: The task to render (unused; the spinner is time-based).
+
+        Returns:
+            The spinner renderable.
+        """
+        return self.spinner
+
+
+class TimeElapsedColumn:
+    """Display the elapsed time for a task."""
+
+    flex = False
+    time_based = True
+
+    def __init__(self, style: Style | None = None) -> None:
+        """Initialise the TimeElapsedColumn with an optional style.
+
+        Args:
+            style: The style to apply to the elapsed time text (default None).
+        """
+        self.style = style
+
+    def __call__(self, task: Task) -> Text:
+        """Render the task's elapsed time.
+
+        Args:
+            task: The task to render.
+
+        Returns:
+            A Text of the elapsed time.
+        """
+        return Text(_format_time(task.elapsed), style=self.style)
+
+
+class TimeRemainingColumn:
+    """Display the remaining time for a task."""
+
+    flex = False
+    time_based = True
+
+    def __init__(self, style: Style | None = None) -> None:
+        """Initialise the TimeRemainingColumn with an optional style.
+
+        Args:
+            style: The style to apply to the remaining time text (default None).
+        """
+        self.style = style
+
+    def __call__(self, task: Task) -> Text:
+        """Render the task's remaining time.
+
+        Args:
+            task: The task to render.
+
+        Returns:
+            A Text of the remaining time.
+        """
+        return Text(_format_time(task.remaining), style=self.style)
+
+
+Column = (
+    TextColumn
+    | BarColumn
+    | PercentageColumn
+    | SpinnerColumn
+    | TimeElapsedColumn
+    | TimeRemainingColumn
+)
 
 
 def default_columns() -> list[Column]:
@@ -182,6 +321,7 @@ class Progress(LineRenderable):
         self._refresh_per_second = refresh_per_second
         self._transient = transient
         self._live = None
+        self._time_based = any(getattr(c, "time_based", False) for c in self.columns)
 
         # Per-task line cache: task_id -> (signature, rendered line)
         self._line_cache: dict[int, tuple[tuple, list[Segment]]] = {}
@@ -235,8 +375,9 @@ class Progress(LineRenderable):
             The task ID of the newly added task.
         """
         tid = len(self.tasks)
-        self.tasks.append(Task(tid, description, total, completed, fields))
-        self.refresh()
+        self.tasks.append(
+            Task(tid, description, total, completed, fields, start_time=monotonic())
+        )
 
         return tid
 
@@ -274,7 +415,6 @@ class Progress(LineRenderable):
             t.description = description
 
         t.fields.update(fields)
-        self.refresh()
 
     def advance(self, task_id: int, step: int = 1) -> None:
         """Advance the task with the given ID by the given number of steps.
@@ -326,7 +466,7 @@ class Progress(LineRenderable):
             if i:
                 line.append(blank(gutter))
 
-            if isinstance(item, (TextColumn, BarColumn, PercentageColumn)):
+            if isinstance(item, Column):
                 line.extend(
                     console.render(item(task), options._replace(max_width=flexw))
                 )
@@ -348,9 +488,10 @@ class Progress(LineRenderable):
         """
         width = options.max_width
         cache = self._line_cache
+        time_based = self._time_based
         out: list[list[Segment]] = []
         for task in self.tasks:
-            sig = self._task_signature(task, width)
+            sig = None if time_based else self._task_signature(task, width)
             cached = cache.get(task.id)
 
             if sig is not None and cached is not None and cached[0] == sig:

@@ -44,6 +44,7 @@ class Live:
         self.auto_refresh = auto_refresh
         self._interval = 1.0 / refresh_per_second if refresh_per_second > 0 else None
         self._lines = 0  # Height of the last drawn block
+        self._prev_lines: list[bytes] | None = None
         self._started = False
         self._pending: bytes | None = None  # Last frame, for non-terminal sinks
         self._lock = RLock()
@@ -137,20 +138,63 @@ class Live:
                 return
 
             block = self.console.render_bytes(self._renderable)
-            height = block.count(b"\n") + 1
+            new_lines = block.split(b"\n")
+            height = len(new_lines)
 
             if not self.console.is_terminal:
                 self._pending = block  # Drawn once, on stop
                 return
 
-            if self._lines:
-                # Return to the top and clear so a shorter/taller new frame draws cleanly
-                self.console._write_control(
-                    control.CR, control.up(self._lines - 1), control.ERASE_DOWN
+            if self._prev_lines is not None and len(self._prev_lines) == height:
+                self.console._write_bytes(
+                    self._diff_bytes(self._prev_lines, new_lines, height)
                 )
 
-            self.console._write_bytes(block)
+            else:
+                if self._lines:
+                    # Return to the top and clear so a shorter/taller new frame draws cleanly
+                    self.console._write_control(
+                        control.CR, control.up(self._lines - 1), control.ERASE_DOWN
+                    )
+
+                self.console._write_bytes(block)
+
+            self._prev_lines = new_lines
             self._lines = height
+
+    def _diff_bytes(self, prev: list[bytes], new: list[bytes], height: int) -> bytes:
+        """Build the byte sequence that rewrites only the changed lines.
+
+        Walks from the top of the block keeping the cursor at column 0 of each
+        row; a changed row is rewritten, an unchanged row is skipped by moving down.
+        The cursor ends on the last row for the next refresh.
+
+        Args:
+            prev: The previous frame's per-line bytes.
+            new: The new frame's per-line bytes.
+            height: The (shared) number of lines.
+
+        Returns:
+            The encoded control/content byte sequence.
+        """
+        buf = bytearray()
+        buf += control.CR + control.up(height - 1)  # Top row
+
+        for i in range(height):
+            changed = new[i] != prev[i]
+            if changed:
+                buf += new[i]
+                buf += control.ERASE_TO_LINE_END
+
+            if i < height - 1:
+                # Move to column 0 of the next row
+                if changed:
+                    buf += control.CR + control.down(1)
+
+                else:
+                    buf += control.down(1)
+
+        return bytes(buf)
 
     def _auto_refresh_wanted(self) -> bool:
         """Whether background refresh thread should run for this session.

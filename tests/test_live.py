@@ -42,8 +42,8 @@ def test_live_animates_and_reflows_mutation(term, one_row_table) -> None:
 
     out = c.file.getvalue()
     assert out.startswith(ctl.HIDE_CURSOR)  # Cursor hidden on start
-    assert ctl.ERASE_DOWN in out  # Previous frame repositioned + cleared
-    assert ctl.up(4) in out  # 5-line block -> move up 4 to its top
+    assert ctl.up(4) in out  # 5-line block -> repositioned to its top (line diff)
+    assert ctl.ERASE_TO_LINE_END in out  # Changed line rewritten in place
     assert b"Z" in out  # Mutation drawn on refresh
     assert out.endswith(ctl.SHOW_CURSOR)  # Cursor restored on stop
 
@@ -127,7 +127,7 @@ def test_auto_refresh_draws_multiple_frames(term) -> None:
     with Live(Spinner("line"), console=c, auto_refresh=True, refresh_per_second=60):
         time.sleep(0.15)  # ~9 ticks at 60/s; assert generously below
     out = c.file.getvalue()
-    assert out.count(ctl.ERASE_DOWN) >= 1  # At least two frames were drawn
+    assert out.count(ctl.ERASE_TO_LINE_END) >= 1  # Changed frame was rewritten
 
 
 def test_no_ticker_on_non_terminal(pipe, one_row_table) -> None:
@@ -175,7 +175,45 @@ def test_progress_context_manager_draws_and_updates(term) -> None:
     ) as p:
         tid = p.add_task("work", total=10, completed=0)
         p.advance(tid, 5)
+        p.refresh()  # auto_refresh=False: draw is explicit
     out = c.file.getvalue()
     assert b"work" in out  # Description drawn
     assert ctl.HIDE_CURSOR in out and ctl.SHOW_CURSOR in out  # Live lifecycle
-    assert ctl.ERASE_DOWN in out  # Redrawn on advance
+    assert ctl.ERASE_TO_LINE_END in out  # Redrawn on advance (line diff)
+
+
+def test_line_diff_skips_unchanged_lines(term, one_row_table) -> None:
+    """Test that a same-height refresh rewrites only the changed line."""
+    c = term()
+    t = one_row_table("1", "2")
+    with Live(t, console=c, auto_refresh=False) as live:
+        start = len(c.file.getvalue())
+        t.update_cell(0, 0, "Z")
+        live.refresh()
+        frame = c.file.getvalue()[start:]
+    assert b"Z" in frame  # Changed cell rewritten
+    assert b"| A | B |" not in frame  # Unchanged header line not re-emitted
+    assert ctl.ERASE_DOWN not in frame  # No full-block clear on same height
+
+
+def test_line_diff_falls_back_on_height_change(term, simple_table) -> None:
+    """Test that a height change uses full block overwrite, not line diff."""
+    c = term()
+    with Live(simple_table([("1", "2")]), console=c, auto_refresh=False) as live:
+        start = len(c.file.getvalue())
+        live.update(simple_table([("1", "2"), ("3", "4")]))
+        frame = c.file.getvalue()[start:]
+    assert ctl.ERASE_DOWN in frame  # Full overwrite path
+
+
+def test_update_marks_dirty_without_immediate_draw(term) -> None:
+    """Test the throttle model: update() alone does not draw (the tick does)."""
+    from fastrich.progress import Progress, TextColumn
+
+    c = term(width=30)
+    with Progress(TextColumn("{description}"), console=c, auto_refresh=False) as p:
+        before = len(c.file.getvalue())
+        p.update(p.add_task("task"), description="changed")
+        assert len(c.file.getvalue()) == before  # No draw from mutation
+        p.refresh()
+        assert b"changed" in c.file.getvalue()[before:]  # Explicit refresh draws
