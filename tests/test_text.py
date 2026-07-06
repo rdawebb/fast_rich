@@ -51,3 +51,22 @@ def test_base_style_applies_to_whole() -> None:
 def test_empty_text_renders_empty() -> None:
     """Test empty text renders empty."""
     assert Text("").render() == ""
+
+
+def test_text_justify_param() -> None:
+    """Test that a Text's justify is used by render_lines."""
+    line = Text("hi", justify="center").render_lines(6)[0]
+    assert "".join(s.text for s in line) == "  hi  "
+
+
+def test_text_no_wrap_uses_overflow() -> None:
+    """Test that no_wrap yields a single overflow-handled line, not folded."""
+    t = Text("hello world foo", no_wrap=True, overflow="ellipsis")
+    lines = t.render_lines(10)
+    assert len(lines) == 1
+    assert "".join(s.text for s in lines[0]).endswith("\u2026")
+
+
+def test_text_overflow_default_still_folds() -> None:
+    """Test that overflow defaults to fold (unchanged behavior) when unset."""
+    assert len(Text("hello world foo").render_lines(8)) > 1

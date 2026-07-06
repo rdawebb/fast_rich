@@ -79,3 +79,54 @@ def test_percentage_column_format() -> None:
     tid = p.add_task("x", total=100, completed=5)
     col = PercentageColumn()
     assert col(p.tasks[tid]).plain == "  5%"
+
+
+def test_task_start_time_and_elapsed() -> None:
+    """Test that add_task records a start_time and elapsed advances from it."""
+    p = Progress()
+    tid = p.add_task("x")
+    task = p.tasks[tid]
+    assert task.start_time is not None
+    assert task.elapsed is not None and task.elapsed >= 0.0
+
+
+def test_time_columns_format() -> None:
+    """Test the time columns render h:mm:ss (elapsed) and a placeholder (remaining)."""
+    from fastrich.progress import (
+        Task,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+        _format_time,
+    )
+
+    assert _format_time(0) == "0:00:00"
+    assert _format_time(3661) == "1:01:01"
+    assert _format_time(None) == "-:--:--"
+
+    # A task with no progress yet -> remaining is unknown
+    t = Task(0, "x", total=10, completed=0, start_time=0.0)
+    assert TimeRemainingColumn()(t).plain == "-:--:--"
+    assert TimeElapsedColumn()(t).plain != ""
+
+
+def test_spinner_column_is_time_based() -> None:
+    """Test that SpinnerColumn marks Progress time-based (bypassing the line cache)."""
+    from fastrich.progress import SpinnerColumn, TextColumn
+
+    p = Progress(SpinnerColumn(), TextColumn("{description}"))
+    assert p._time_based is True
+    p2 = Progress(TextColumn("{description}"))
+    assert p2._time_based is False
+
+
+def test_progress_get_time_injectable() -> None:
+    """Test that an injected clock drives task start_time, elapsed, and remaining."""
+    clock = [100.0]
+    p = Progress(get_time=lambda: clock[0])
+    tid = p.add_task("x", total=10, completed=5)
+    task = p.tasks[tid]
+    assert task.start_time == 100.0
+    assert task.elapsed == 0.0
+    clock[0] = 110.0
+    assert task.elapsed == 10.0
+    assert task.remaining == 10.0  # 5 done in 10s -> 5 left at same rate

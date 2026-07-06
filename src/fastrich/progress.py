@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -18,7 +18,7 @@ from .segment import LineRenderable, Segment, blank
 from .text import Text
 
 
-@dataclass
+@dataclass(slots=True)
 class Task:
     """Represents a task with a description, total, completed, and optional fields."""
 
@@ -28,6 +28,7 @@ class Task:
     completed: float
     fields: dict = field(default_factory=dict)
     start_time: float | None = None
+    get_time: Callable[[], float] = monotonic
 
     @property
     def elapsed(self) -> float | None:
@@ -39,7 +40,7 @@ class Task:
         if self.start_time is None:
             return None
 
-        return monotonic() - self.start_time
+        return self.get_time() - self.start_time
 
     @property
     def remaining(self) -> float | None:
@@ -188,7 +189,7 @@ def _format_time(seconds: float | None) -> str:
     hours, rem = divmod(total, 3600)
     minutes, secs = divmod(rem, 60)
 
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{hours:01d}:{minutes:02d}:{secs:02d}"
 
 
 class SpinnerColumn:
@@ -302,6 +303,7 @@ class Progress(LineRenderable):
         auto_refresh: bool = True,
         refresh_per_second: float = 10.0,
         transient: bool = False,
+        get_time: Callable[[], float] = monotonic,
     ) -> None:
         """Initialise the progress bar with the given columns and padding.
 
@@ -312,10 +314,12 @@ class Progress(LineRenderable):
             auto_refresh: Whether to automatically refresh the progress bar (default is True).
             refresh_per_second: The number of times to refresh per second (default is 10.0).
             transient: Whether the progress bar should be transient (default is False).
+            get_time: Injectable monotonic clock for task timing (default is monotonic).
         """
         self.columns: list[Column] = list(columns) or default_columns()
         self.padding = padding
         self.tasks: list[Task] = []
+        self._get_time = get_time
         self._console = console
         self._auto_refresh = auto_refresh
         self._refresh_per_second = refresh_per_second
@@ -376,7 +380,15 @@ class Progress(LineRenderable):
         """
         tid = len(self.tasks)
         self.tasks.append(
-            Task(tid, description, total, completed, fields, start_time=monotonic())
+            Task(
+                tid,
+                description,
+                total,
+                completed,
+                fields,
+                start_time=self._get_time(),
+                get_time=self._get_time,
+            )
         )
 
         return tid
