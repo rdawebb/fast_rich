@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -51,7 +51,7 @@ class Rule(LineRenderable):
         characters: str = "─",
         style: Style | None = None,
         title_style: Style | None = None,
-        align: str = "center",
+        align: Literal["left", "center", "right"] = "center",
     ) -> None:
         """Initialise a Rule with the given title and character set.
 

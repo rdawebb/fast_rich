@@ -7,7 +7,7 @@ at span boundaries and resolves the effective style per interval.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -30,17 +30,36 @@ class Span(NamedTuple):
 class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
-    __slots__ = ("plain", "style", "_spans", "_edges")
+    __slots__ = ("plain", "style", "justify", "overflow", "no_wrap", "_spans", "_edges")
 
-    def __init__(self, text: str = "", style: Style | None = None) -> None:
+    def __init__(
+        self,
+        text: str = "",
+        style: Style | None = None,
+        *,
+        justify: Literal["left", "center", "right"] | None = None,
+        overflow: Literal["fold", "ellipsis", "crop"] | None = None,
+        no_wrap: bool | None = None,
+    ) -> None:
         """Initialise with optional plain text and base style.
 
         Args:
             text: The plain text content.
             style: The base style to apply to the whole string.
+            justify: Alignment within a fixed width ("left", "center", "right").
+                None inherits the render default ("left").
+            overflow: Overflow handling ("fold", "ellipsis", "crop"). None
+                inherits the render default ("fold").
+            no_wrap: Disable wrapping; a too-long line is handled by `overflow`.
+                None inherits the render default (False).
+
         """
         self.plain = text
         self.style = style  # Base style applied to the whole string
+        self.justify = justify
+        self.overflow = overflow
+        self.no_wrap = no_wrap
+
         self._spans: list[Span] = []
         self._edges: list[int] | None = None  # Cached span-boundary points
 
@@ -70,7 +89,7 @@ class Text:
         return cell_len(self.plain)
 
     @classmethod
-    def from_markup(cls, markup: str, style: Style | None = None) -> "Text":
+    def from_markup(cls, markup: str, style: Style | None = None) -> Text:
         """Build a Text from console markup.
 
         Args:
@@ -84,7 +103,7 @@ class Text:
 
         return render(markup, style)
 
-    def append(self, text: str, style: Style | None = None) -> "Text":
+    def append(self, text: str, style: Style | None = None) -> Text:
         """Append text, optionally styled, returning self for chaining.
 
         Args:
@@ -103,7 +122,7 @@ class Text:
 
         return self
 
-    def stylize(self, style: Style, start: int = 0, end: int | None = None) -> "Text":
+    def stylize(self, style: Style, start: int = 0, end: int | None = None) -> Text:
         """Apply style over [start, end) of the existing text.
 
         Args:
@@ -240,7 +259,13 @@ class Text:
         return self.render_bytes().decode("utf-8")
 
     def render_lines(
-        self, width: int, justify: str = "left", overflow: str = "fold", base_style=None
+        self,
+        width: int,
+        justify: Literal["left", "center", "right"] | None = None,
+        overflow: Literal["fold", "ellipsis", "crop"] | None = None,
+        base_style=None,
+        *,
+        no_wrap: bool | None = None,
     ) -> list[list[Segment]]:
         """Render to a list of lines (each a list of Segments), fitted to width.
 
@@ -250,12 +275,17 @@ class Text:
         Args:
             width: The width to fit the text to.
             justify: How to justify the text within the width ("left", "center", "right").
-            overflow: How to handle overflow ("fold", "ellipsis", "fold_ellipsis").
+            overflow: How to handle overflow ("fold", "ellipsis", "crop").
             base_style: A style to apply under the Text's own style and spans.
+            no_wrap: Whether to disable wrapping of the text.
 
         Returns:
             A list of lines, each a list of Segments.
         """
+        justify = justify if justify is not None else (self.justify or "left")
+        overflow = overflow if overflow is not None else (self.overflow or "fold")
+        no_wrap = no_wrap if no_wrap is not None else bool(self.no_wrap)
+
         from .segment import Segment, blank
 
         text = self.plain
@@ -294,6 +324,7 @@ class Text:
                 for span in spans:
                     if span.start <= lo and span.end >= hi:
                         style = style.combine(span.style)
+
                 out.append(Segment(text[lo:hi], style if style else None))
 
             return out
@@ -330,7 +361,7 @@ class Text:
 
             return segs
 
-        if overflow == "fold":
+        if overflow == "fold" and not no_wrap:
             return [line(s, e) for s, e in wrap_offsets(text, width)]
 
         if cell_len(text) <= width:

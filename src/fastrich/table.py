@@ -8,7 +8,7 @@ width, columns shrink proportionally.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, NamedTuple, Sequence
+from typing import TYPE_CHECKING, Iterable, Literal, NamedTuple, Sequence
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -133,12 +133,12 @@ class Column:
         self,
         header: str = "",
         *,
-        justify: str = "left",
+        justify: Literal["left", "center", "right"] = "left",
         style: Style | None = None,
         header_style: Style | None = None,
         min_width: int | None = None,
         max_width: int | None = None,
-        overflow: str = "ellipsis",
+        overflow: Literal["fold", "ellipsis", "crop"] | None = "ellipsis",
         no_wrap: bool = False,
     ) -> None:
         """Initialise a Column.
@@ -176,6 +176,10 @@ class Table(CachedBytes):
         border_style: Style | None = None,
         style: Style | None = None,
         expand: bool = False,
+        title: str | Text = "",
+        caption: str | Text = "",
+        title_justify: Literal["left", "center", "right"] = "center",
+        caption_justify: Literal["left", "center", "right"] = "center",
     ) -> None:
         """Initialise a Table with optional headers and styling.
 
@@ -188,6 +192,10 @@ class Table(CachedBytes):
             border_style: The style for the table border.
             style: Base style for whole table, cell/column styles compose over.
             expand: If True, stretch columns to fill available width.
+            title: The title shown above the table.
+            caption: The caption shown below the table.
+            title_justify: Title alignment, "left", "center", or "right".
+            caption_justify: Caption alignment, "left", "center", or "right".
         """
         self._init_byte_cache()
         self.columns: list[Column] = []
@@ -211,6 +219,10 @@ class Table(CachedBytes):
         self.border_style = border_style
         self.style = style or NULL_STYLE
         self.expand = expand
+        self.title = title
+        self.caption = caption
+        self.title_justify = title_justify
+        self.caption_justify = caption_justify
 
         for h in headers:
             self.add_column(h)
@@ -516,6 +528,41 @@ class Table(CachedBytes):
 
         return out
 
+    def _banner(
+        self,
+        console: Console,
+        options: ConsoleOptions,
+        text: str | Text,
+        justify: str,
+        width: int,
+    ) -> list[Segment]:
+        """Render a title/caption to one line justified within `width`.
+
+        Args:
+            console: The console to render to.
+            options: The console options.
+            text: The text to render.
+            justify: The justification of the text, "left", "center", or "right".
+            width: The width of the banner line.
+
+        Returns:
+            A list of segments representing the rendered banner line.
+        """
+        segs = list(console.render(text, options._replace(max_width=width)))
+        used = sum(cell_len(s.text) for s in segs)
+        space = max(0, width - used)
+
+        if justify == "left":
+            left = 0
+
+        elif justify == "right":
+            left = space
+
+        else:
+            left = space // 2
+
+        return [blank(left), *segs, blank(space - left)]
+
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the table to a list of fully framed physical lines.
 
@@ -560,7 +607,15 @@ class Table(CachedBytes):
 
             return [Segment("".join(parts), bs)]
 
-        lines = [hrule(b.top_left, b.top, b.top_divider, b.top_right)]
+        table_w = sum(w + 2 * pad for w in widths) + (ncols + 1)
+
+        lines = []
+        if self.title:
+            lines.append(
+                self._banner(console, options, self.title, self.title_justify, table_w)
+            )
+
+        lines.append(hrule(b.top_left, b.top, b.top_divider, b.top_right))
 
         if self.show_header:
             header_bases = [c.header_style or self.header_style for c in self.columns]
@@ -591,6 +646,13 @@ class Table(CachedBytes):
             lines.extend(row_lines)
 
         lines.append(hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right))
+
+        if self.caption:
+            lines.append(
+                self._banner(
+                    console, options, self.caption, self.caption_justify, table_w
+                )
+            )
 
         return compose_lines(lines, self.style)
 

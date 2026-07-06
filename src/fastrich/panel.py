@@ -8,7 +8,7 @@ console render protocol.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -37,9 +37,9 @@ class Panel(CachedBytes, LineRenderable):
         *,
         box=SQUARE,
         title: str | Text = "",
-        title_align: str = "center",
+        title_align: Literal["left", "center", "right"] = "center",
         subtitle: str | Text = "",
-        subtitle_align: str = "center",
+        subtitle_align: Literal["left", "center", "right"] = "center",
         border_style: Style | None = None,
         title_style: Style | None = None,
         style: Style | None = None,
