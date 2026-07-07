@@ -49,8 +49,8 @@ class Rule(LineRenderable):
         title: str = "",
         *,
         characters: str = "─",
-        style: Style | None = None,
-        title_style: Style | None = None,
+        style: str | Style | None = None,
+        title_style: str | Style | None = None,
         align: Literal["left", "center", "right"] = "center",
     ) -> None:
         """Initialise a Rule with the given title and character set.
@@ -79,14 +79,17 @@ class Rule(LineRenderable):
             The styled segments representing the rule.
         """
         width = options.max_width
+        style = console.resolve_style(self.style)
         title = self.title.plain if hasattr(self.title, "plain") else str(self.title)
         if not title:
-            return [[Segment(_tile(self.characters, width), self.style)]]
+            return [[Segment(_tile(self.characters, width), style)]]
+
+        title_style = console.resolve_style(self.title_style)
 
         label = f" {title} "
         tlen = cell_len(label)
         if tlen >= width:
-            return [[Segment(_tile(self.characters, width), self.style)]]
+            return [[Segment(_tile(self.characters, width), style)]]
 
         side = width - tlen
         if self.align == "left":
@@ -98,8 +101,8 @@ class Rule(LineRenderable):
 
         return [
             [
-                Segment(_tile(self.characters, left), self.style),
-                Segment(label, self.title_style),
-                Segment(_tile(self.characters, side - left), self.style),
+                Segment(_tile(self.characters, left), style),
+                Segment(label, title_style),
+                Segment(_tile(self.characters, side - left), style),
             ]
         ]

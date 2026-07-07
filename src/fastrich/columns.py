@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 from ._width import cell_len, char_cell_len
 from .measure import measure
 from .segment import CachedBytes, LineRenderable, Segment, blank, compose_lines
-from .style import NULL_STYLE
 
 
 def _fit_line(line: Sequence[Segment], width: int) -> list[Segment]:
@@ -78,7 +77,7 @@ class Columns(CachedBytes, LineRenderable):
         *,
         padding: int = 1,
         width: int | None = None,
-        style: Style | None = None,
+        style: str | Style | None = None,
         expand: bool = False,
     ) -> None:
         """Initialise a Columns layout with the given renderables and optional padding and width.
@@ -95,7 +94,7 @@ class Columns(CachedBytes, LineRenderable):
         self.renderables = list(renderables)
         self.padding = padding
         self.width = width  # Fixed column width override
-        self.style = style or NULL_STYLE
+        self.style = style
         self.expand = expand
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
@@ -147,4 +146,4 @@ class Columns(CachedBytes, LineRenderable):
 
                 rows.append(row)
 
-        return compose_lines(rows, self.style)
+        return compose_lines(rows, console.resolve_style(self.style))

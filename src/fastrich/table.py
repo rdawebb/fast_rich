@@ -134,8 +134,8 @@ class Column:
         header: str = "",
         *,
         justify: Literal["left", "center", "right"] = "left",
-        style: Style | None = None,
-        header_style: Style | None = None,
+        style: str | Style | None = None,
+        header_style: str | Style | None = None,
         min_width: int | None = None,
         max_width: int | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = "ellipsis",
@@ -172,9 +172,9 @@ class Table(CachedBytes):
         box: Box = SQUARE,
         padding: int = 1,
         show_header: bool = True,
-        header_style: Style | None = None,
-        border_style: Style | None = None,
-        style: Style | None = None,
+        header_style: str | Style | None = None,
+        border_style: str | Style | None = None,
+        style: str | Style | None = None,
         expand: bool = False,
         title: str | Text = "",
         caption: str | Text = "",
@@ -583,7 +583,11 @@ class Table(CachedBytes):
         widths = self._fit_to(nat, options.max_width - overhead, self.expand)
         wkey = tuple(widths)  # Row reflows if the resolved widths change
 
-        b, bs = self.box, self.border_style
+        b = self.box
+        bs = console.resolve_style(self.border_style)
+        hstyle = console.resolve_style(self.header_style)
+        col_styles = [console.resolve_style(c.style) for c in self.columns]
+        col_hstyles = [console.resolve_style(c.header_style) for c in self.columns]
 
         def hrule(left: str, mid: str, div: str, right: str) -> list[Segment]:
             """Render a horizontal rule with the given glyphs and widths.
@@ -618,14 +622,14 @@ class Table(CachedBytes):
         lines.append(hrule(b.top_left, b.top, b.top_divider, b.top_right))
 
         if self.show_header:
-            header_bases = [c.header_style or self.header_style for c in self.columns]
+            header_bases = [ch or hstyle for ch in col_hstyles]
             header_frame = _row_frame(b, bs, widths, header_bases, pad)
             lines.extend(
                 self._framed_row_lines(headers, widths, header_bases, pad, header_frame)
             )
             lines.append(hrule(b.head_left, b.head, b.head_divider, b.head_right))
 
-        body_bases = [c.style for c in self.columns]
+        body_bases = col_styles
 
         # One shared set of border/padding Segments for every body row
         body_frame = _row_frame(b, bs, widths, body_bases, pad)
@@ -654,7 +658,7 @@ class Table(CachedBytes):
                 )
             )
 
-        return compose_lines(lines, self.style)
+        return compose_lines(lines, console.resolve_style(self.style))
 
     def __rich_lines__(
         self, console: Console, options: ConsoleOptions

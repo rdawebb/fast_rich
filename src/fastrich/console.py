@@ -266,6 +266,23 @@ class Console:
 
         return replace(text)
 
+    def resolve_style(self, value: str | Style | None) -> Style | None:
+        """Resolve a style param (None, a Style, or a str) to a Style or None.
+
+        A str is resolved theme-first then parsed (see `_resolve_style`), a Style
+        passes through, None stays None.
+
+        Args:
+            value: None, a Style, or a style name/definition string.
+
+        Returns:
+            The resolved Style, or None.
+        """
+        if value is None or isinstance(value, Style):
+            return value
+
+        return self._resolve_style(value)
+
     def _resolve_style(self, definition: str) -> Style:
         """Resolve a markup tag or base style string to a Style.
 

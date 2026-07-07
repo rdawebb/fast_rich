@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 from ._width import cell_len
 from .measure import measure
 from .segment import CachedBytes, LineRenderable, Segment, blank, compose_lines
-from .style import NULL_STYLE
 
 
 class Align(CachedBytes, LineRenderable):
@@ -34,7 +33,7 @@ class Align(CachedBytes, LineRenderable):
         *,
         vertical: Literal["top", "middle", "bottom"] | None = None,
         height: int | None = None,
-        style: Style | None = None,
+        style: str | Style | None = None,
     ) -> None:
         """Initialise an Align instance.
 
@@ -50,7 +49,7 @@ class Align(CachedBytes, LineRenderable):
         self.align = align
         self.vertical = vertical
         self.height = height
-        self.style = style or NULL_STYLE
+        self.style = style
 
     @classmethod
     def center(cls, renderable, **kwargs) -> "Align":
@@ -145,4 +144,4 @@ class Align(CachedBytes, LineRenderable):
                 else:
                     rows = rows + [blank_row] * extra
 
-        return compose_lines(rows, self.style)
+        return compose_lines(rows, console.resolve_style(self.style))

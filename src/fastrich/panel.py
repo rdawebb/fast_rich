@@ -40,9 +40,9 @@ class Panel(CachedBytes, LineRenderable):
         title_align: Literal["left", "center", "right"] = "center",
         subtitle: str | Text = "",
         subtitle_align: Literal["left", "center", "right"] = "center",
-        border_style: Style | None = None,
-        title_style: Style | None = None,
-        style: Style | None = None,
+        border_style: str | Style | None = None,
+        title_style: str | Style | None = None,
+        style: str | Style | None = None,
         padding: tuple[int, int] = (0, 1),
         width: int | None = None,
         expand: bool = True,
@@ -116,19 +116,20 @@ class Panel(CachedBytes, LineRenderable):
 
         return _normalise(self.padding)
 
-    def _compose(self, segments: Sequence[Segment]) -> list[Segment]:
+    def _compose(
+        self, segments: Sequence[Segment], base: Style | None
+    ) -> list[Segment]:
         """Layer the panel's base style under each segment (no-op if unset).
 
         Args:
             segments: The list of segments to compose.
+            base: The resolved base style to layer under each segment.
 
         Returns:
             The composed list of segments.
         """
-        if not self.style:
+        if not base:
             return list(segments)
-
-        base = self.style
 
         return [
             Segment(s.text, base.combine(s.style) if s.style else base)
@@ -141,6 +142,7 @@ class Panel(CachedBytes, LineRenderable):
         options: ConsoleOptions,
         label: str | Text,
         label_style: Style | None,
+        base: Style | None,
     ) -> tuple[list[Segment] | None, int]:
         """Return (segments, width) for a title/subtitle label, or (None, 0).
 
@@ -168,7 +170,7 @@ class Panel(CachedBytes, LineRenderable):
 
         width = sum(cell_len(s.text) for s in segs)
 
-        return self._compose(segs), width
+        return self._compose(segs, base), width
 
     def _rule_row(
         self,
@@ -231,7 +233,11 @@ class Panel(CachedBytes, LineRenderable):
             A list of lists of styled segments, one list per line.
         """
         b = self.box
-        bs = self.style.combine(self.border_style) if self.border_style else self.style
+        pstyle = console.resolve_style(self.style)
+        border = console.resolve_style(self.border_style)
+        tstyle = console.resolve_style(self.title_style)
+        base = pstyle or NULL_STYLE
+        bs = base.combine(border) if border else pstyle
         bs = bs or None  # NULL_STYLE -> None
 
         if self.width is not None:
@@ -260,10 +266,10 @@ class Panel(CachedBytes, LineRenderable):
         body = console.render_lines(padded, options._replace(max_width=inner))
 
         title_segs, title_w = self._label_segments(
-            console, options, self.title, self.title_style
+            console, options, self.title, tstyle, pstyle
         )
         sub_segs, sub_w = self._label_segments(
-            console, options, self.subtitle, self.title_style
+            console, options, self.subtitle, tstyle, pstyle
         )
 
         rows = [
@@ -281,7 +287,11 @@ class Panel(CachedBytes, LineRenderable):
 
         for line in body:  # Each already inner-wide
             rows.append(
-                [Segment(b.left, bs), *self._compose(line), Segment(b.right, bs)]
+                [
+                    Segment(b.left, bs),
+                    *self._compose(line, pstyle),
+                    Segment(b.right, bs),
+                ]
             )
 
         rows.append(
