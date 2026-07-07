@@ -70,3 +70,30 @@ def test_text_no_wrap_uses_overflow() -> None:
 def test_text_overflow_default_still_folds() -> None:
     """Test that overflow defaults to fold (unchanged behavior) when unset."""
     assert len(Text("hello world foo").render_lines(8)) > 1
+
+
+def test_text_justify_full() -> None:
+    """Test that full justify fills non-final lines and left-aligns the last."""
+    lines = [
+        "".join(s.text for s in ln)
+        for ln in Text("the quick brown fox jumps over", justify="full").render_lines(
+            20
+        )
+    ]
+    assert all(len(ln) == 20 for ln in lines)  # Every line fits width
+    assert lines[-1] == "jumps over".ljust(20)  # Last line left-aligned
+    assert "  " in lines[0]  # Slack distributed as widened inter-word gaps
+
+
+def test_text_justify_full_single_word() -> None:
+    """Test that a one-word line can't stretch and stays left."""
+    line = Text("supercalifragilistic word", justify="full").render_lines(20)[0]
+    assert "".join(s.text for s in line) == "supercalifragilistic"
+
+
+def test_text_justify_full_preserves_span_style() -> None:
+    """Test that word styling survives full justification."""
+    t = Text("alpha beta gamma delta", justify="full")
+    t.stylize(Style(bold=True), 0, 5)
+    line0 = t.render_lines(20)[0]
+    assert any(s.style and s.style.bold and s.text == "alpha" for s in line0)

@@ -285,6 +285,11 @@ class CachedBytes:
             self._dirty = False
 
         no_color, encoding = console.no_color, console.encoding
+
+        # Note: the active theme is deliberately not part of this key. A str style
+        # param that is a theme name resolves at render, so drawing the same object
+        # under two different themes would return the first theme's cached bytes.
+        # Construct a fresh renderable (or call mark_dirty) if needed.
         key = (options.max_width, no_color, encoding, console._markup)
         cache = self._byte_cache
 

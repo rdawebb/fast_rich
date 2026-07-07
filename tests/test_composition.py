@@ -282,3 +282,57 @@ def test_expand_defaults_and_overrides(render) -> None:
     fit = render(Columns(items), width=30).splitlines()[0]
     grown = render(Columns(items, expand=True), width=30).splitlines()[0]
     assert len(grown) > len(fit)
+
+
+def test_table_title_and_caption(render) -> None:
+    """Test that Table renders a justified title above and caption below."""
+    from fastrich.table import Table
+
+    t = Table("A", "B", box=ASCII, title="Rep", caption="c", caption_justify="right")
+    t.add_row("x", "y")
+    lines = render(t, width=20).splitlines()
+    assert "Rep" in lines[0] and lines[1].startswith("+")  # title above the box
+    assert lines[-1].rstrip().endswith("c")  # caption below, right-justified
+
+
+def test_style_strings_resolve_at_render(render) -> None:
+    """Test that str style params resolve to styles across renderables."""
+    from fastrich.align import Align
+    from fastrich.columns import Columns
+    from fastrich.table import Table
+
+    t = Table("A", box=ASCII, style="red", border_style="green")
+    t.add_row("x")
+    assert "\x1b[31m" in render(t, color="standard", width=16)
+    assert "\x1b[32m" in render(t, color="standard", width=16)
+    assert "\x1b[31m" in render(
+        Padding("hi", (0, 0), style="red"), color="standard", width=8
+    )
+    assert "\x1b[31m" in render(
+        Align("hi", "center", style="red"), color="standard", width=8
+    )
+    assert "\x1b[31m" in render(Columns(["a"], style="red"), color="standard", width=8)
+    assert "\x1b[31m" in render(Rule(style="red"), color="standard", width=8)
+
+
+def test_style_string_resolves_theme_name(render) -> None:
+    """Test that a str style param can be a theme name (theme-first resolution)."""
+    from fastrich.theme import Theme
+
+    out = render(
+        Panel("x", box=ASCII, style="danger"),
+        color="standard",
+        width=10,
+        theme=Theme({"danger": "bold red"}),
+    )
+    assert "\x1b[1;31m" in out
+
+
+def test_column_style_string(render) -> None:
+    """Test that a per-column str style resolves at render."""
+    from fastrich.table import Table
+
+    t = Table(box=ASCII)
+    t.add_column("A", style="blue")
+    t.add_row("x")
+    assert "\x1b[34m" in render(t, color="standard", width=10)

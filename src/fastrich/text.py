@@ -37,7 +37,7 @@ class Text:
         text: str = "",
         style: Style | None = None,
         *,
-        justify: Literal["left", "center", "right"] | None = None,
+        justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
         no_wrap: bool | None = None,
     ) -> None:
@@ -46,7 +46,7 @@ class Text:
         Args:
             text: The plain text content.
             style: The base style to apply to the whole string.
-            justify: Alignment within a fixed width ("left", "center", "right").
+            justify: Alignment within a fixed width ("left", "center", "right", "full").
                 None inherits the render default ("left").
             overflow: Overflow handling ("fold", "ellipsis", "crop"). None
                 inherits the render default ("fold").
@@ -261,7 +261,7 @@ class Text:
     def render_lines(
         self,
         width: int,
-        justify: Literal["left", "center", "right"] | None = None,
+        justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
         base_style=None,
         *,
@@ -361,8 +361,63 @@ class Text:
 
             return segs
 
+        def full_line(start: int, end: int) -> list[Segment]:
+            """Full-justify one wrapped line: spread slack between words.
+
+            Words keep their styling (via range_segments), the inter-word gaps
+            become plain expanded spaces. A one-word line falls back to the
+            left-aligned line.
+
+            Args:
+                start: The start index of the line's text.
+                end: The end index of the line's text.
+
+            Returns:
+                The line's segments, filling the width exactly.
+            """
+            words = []
+            word_w = 0
+            i = start
+
+            while i < end:
+                while i < end and text[i] == " ":
+                    i += 1
+                ws = i
+
+                while i < end and text[i] != " ":
+                    i += 1
+
+                if i > ws:
+                    words.append((ws, i))
+                    word_w += cell_len(text[ws:i])
+
+            ngaps = len(words) - 1
+            slack = width - word_w
+
+            if ngaps < 1 or slack < ngaps:
+                return line(start, end)
+
+            base_gap, extra = divmod(slack, ngaps)
+            segs: list[Segment] = []
+            for idx, (a, b) in enumerate(words):
+                segs.extend(range_segments(a, b))
+
+                if idx < ngaps:
+                    segs.append(blank(base_gap + (1 if idx >= ngaps - extra else 0)))
+
+            return segs
+
         if overflow == "fold" and not no_wrap:
-            return [line(s, e) for s, e in wrap_offsets(text, width)]
+            offsets = wrap_offsets(text, width)
+
+            if justify == "full":
+                last = len(offsets) - 1
+                return [
+                    full_line(s, e) if i < last else line(s, e)
+                    for i, (s, e) in enumerate(offsets)
+                ]
+
+            return [line(s, e) for s, e in offsets]
 
         if cell_len(text) <= width:
             return [line(0, n)]
