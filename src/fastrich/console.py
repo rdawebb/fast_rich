@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, NamedTuple, Sequence
+
+if TYPE_CHECKING:
+    from .theme import Theme
+
 import io
 import os
 import sys
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple, Sequence
-
-if TYPE_CHECKING:
-    from .theme import Theme
 
 from . import control
 from .segment import Segment, encode_line, lru_set, split_lines
 from .style import Style
 from .text import Text
+from .wrap import wrap_offsets
 
 # A renderable is anything implementing this method, it returns an iterable of
 # child renderables (str / Text / nested renderables)
@@ -53,6 +55,9 @@ class ConsoleOptions(NamedTuple):
     """Options for the Console."""
 
     max_width: int
+    justify: Literal["left", "center", "right", "full"] | None = None
+    overflow: Literal["fold", "ellipsis", "crop"] | None = None
+    no_wrap: bool | None = None
 
 
 class Console:
@@ -513,6 +518,9 @@ class Console:
         end: str = "\n",
         style: str | Style | None = None,
         markup: bool | None = None,
+        justify: Literal["left", "center", "right", "full"] | None = None,
+        overflow: Literal["fold", "ellipsis", "crop"] | None = None,
+        no_wrap: bool | None = None,
     ) -> None:
         """Print the given objects to the console, applying the given style if provided.
 
@@ -523,9 +531,14 @@ class Console:
             style: The style to apply to the objects.
             markup: Per-call override for markup parsing; falls back to the
                 console default when None.
+            justify: Per-call override for text justification.
+            overflow: Per-call override for text overflow behavior.
+            no_wrap: Per-call override for text wrapping.
         """
         if style is not None and not isinstance(style, Style):
             style = self._resolve_style(style)
+
+        formatted = justify is not None or overflow is not None or no_wrap is not None
 
         # Fast path: single string
         if len(objects) == 1 and isinstance(objects[0], str):
@@ -537,6 +550,10 @@ class Console:
                 sep,
                 end,
                 use_markup,
+                self.width,
+                justify,
+                overflow,
+                no_wrap,
             )
             cache = self._print_cache
             cached = cache.get(key)
@@ -545,16 +562,29 @@ class Console:
                 cache.move_to_end(key)
 
             else:
-                if use_markup and "[" in text:
-                    segs = list(self._str_to_text(text, style)._segments())
+                no_color, encoding = self.no_color, self.encoding
+
+                if formatted or (use_markup and "[" in text):
+                    t = self._str_to_text(text, style, markup)
+                    lines = [
+                        encode_line(tuple(line), no_color, encoding)
+                        for line in t.render_lines(
+                            self.width, justify, overflow, no_wrap=no_wrap
+                        )
+                    ]
+
+                # Plain string
                 else:
                     plain = self._emoji_replace(text) if self._emoji else text
-                    segs = [Segment(plain, style)]
-
-                no_color, encoding = self.no_color, self.encoding
-                lines = [
-                    encode_line(line, no_color, encoding) for line in split_lines(segs)
-                ]
+                    width = self.width
+                    lines = [
+                        encode_line(
+                            (Segment(plain[s:e], style),) if e > s else (),
+                            no_color,
+                            encoding,
+                        )
+                        for s, e in wrap_offsets(plain, width)
+                    ]
 
                 cached = b"\n".join(lines) + _encode_end(end, encoding)
                 lru_set(cache, key, cached, _MAX_PRINT_CACHE)
@@ -578,16 +608,21 @@ class Console:
             self._write_bytes(b"\n".join(lines) + _encode_end(end, encoding))
             return
 
+        opts = self.options._replace(
+            justify=justify, overflow=overflow, no_wrap=no_wrap
+        )
         segments = []
         for i, obj in enumerate(objects):
             if i:
                 segments.append(Segment(sep))
 
             if isinstance(obj, str):
-                segments.extend(self._str_to_text(obj, style, markup)._segments())
+                segments.extend(
+                    self.render(self._str_to_text(obj, style, markup), opts)
+                )
 
             else:
-                segments.extend(self.render(obj))
+                segments.extend(self.render(obj, opts))
 
         no_color, encoding = self.no_color, self.encoding
 

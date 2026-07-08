@@ -87,6 +87,10 @@ def _hard_break(text: str, start: int, end: int, width: int) -> list[tuple[int, 
 def wrap_offsets(text: str, width: int) -> list[tuple[int, int]]:
     """Return a list of (start, end) line ranges wrapping `text` to `width`.
 
+    Whitespace at interior wrap points is consumed (shown on neither line), but
+    leading whitespace before the first word and trailing whitespace after the
+    last word are preserved.
+
     Args:
         text: The input string to wrap.
         width: The maximum width allowed for each line.
@@ -120,12 +124,22 @@ def wrap_offsets(text: str, width: int) -> list[tuple[int, int]]:
 
         if cur_s is None:
             cur_s, cur_e, cur_w = ws, we, wlen
+
         elif cur_w + 1 + wlen <= width:  # +1 for the joining space
             cur_e, cur_w = we, cur_w + 1 + wlen
+
         else:
             flush()
             cur_s, cur_e, cur_w = ws, we, wlen
 
     flush()
 
-    return lines or [(0, 0)]
+    if not lines:
+        # Text is empty or all whitespace, keep as a single line
+        return [(0, len(text))]
+
+    # Extend outer ranges to cover boundary whitespace
+    lines[0] = (0, lines[0][1])
+    lines[-1] = (lines[-1][0], len(text))
+
+    return lines

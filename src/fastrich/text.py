@@ -201,16 +201,37 @@ class Text:
             yield Segment(text[lo:hi], style if style else None)
 
     def __rich_console__(self, console, options):
-        """Render the text as a Rich console object.
+        """Render the text, wrapped to the available width.
+
+        Wraps/justifies/overflows via `render_lines` at `options.max_width`.
+        Per-render overrides on `options` (justify/overflow/no_wrap) take
+        precedence over the Text's own attributes, which fall back to the
+        defaults (ragged wrap, fold, no truncation).
 
         Args:
-            console: The Rich console object.
-            options: The Rich console options.
+            console: The console.
+            options: The console options (carry max_width + overrides).
 
         Yields:
-            Segments of the text to be rendered.
+            Segments for each wrapped line, separated by newline segments.
         """
-        yield from self._segments()
+        from .segment import _NEWLINE
+
+        lines = self.render_lines(
+            options.max_width,
+            options.justify,
+            options.overflow,
+            no_wrap=options.no_wrap,
+        )
+
+        first = True
+        for ln in lines:
+            if not first:
+                yield _NEWLINE
+
+            first = False
+
+            yield from ln
 
     def __rich_measure__(
         self, console: Console, options: ConsoleOptions
@@ -263,7 +284,7 @@ class Text:
         width: int,
         justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
-        base_style=None,
+        base_style: Style | None = None,
         *,
         no_wrap: bool | None = None,
     ) -> list[list[Segment]]:
@@ -274,7 +295,8 @@ class Text:
 
         Args:
             width: The width to fit the text to.
-            justify: How to justify the text within the width ("left", "center", "right").
+            justify: How to justify each line ("left"/"center"/"right"/"full"),
+                falls back to the Text's own justify, then None.
             overflow: How to handle overflow ("fold", "ellipsis", "crop").
             base_style: A style to apply under the Text's own style and spans.
             no_wrap: Whether to disable wrapping of the text.
@@ -282,7 +304,7 @@ class Text:
         Returns:
             A list of lines, each a list of Segments.
         """
-        justify = justify if justify is not None else (self.justify or "left")
+        justify = justify if justify is not None else self.justify
         overflow = overflow if overflow is not None else (self.overflow or "fold")
         no_wrap = no_wrap if no_wrap is not None else bool(self.no_wrap)
 
@@ -347,7 +369,7 @@ class Text:
                 used += 1
 
             pad = width - used
-            if pad > 0:
+            if pad > 0 and justify is not None:
                 if justify == "right":
                     segs.insert(0, blank(pad))
 

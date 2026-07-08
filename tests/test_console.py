@@ -110,3 +110,31 @@ def test_resolve_writer_decodes_for_text_sink() -> None:
     c = Console(file=buf, color_system=None)
     c.print("hi")
     assert buf.getvalue() == "hi\n"
+
+
+def test_print_wraps_string_to_width(make_console) -> None:
+    """Test that a standalone printed string wraps ragged to the console width."""
+    c = make_console(width=12)
+    c.print("one two three four five")
+    assert c.file.getvalue() == b"one two\nthree four\nfive\n"
+
+
+def test_print_justify_override(make_console) -> None:
+    """Test that print's justify overrides a Text's own justify (print wins)."""
+    c = make_console(width=8)
+    c.print(Text("hi", justify="center"), justify="right")
+    assert c.file.getvalue() == b"      hi\n"
+
+
+def test_print_string_no_trailing_pad(make_console) -> None:
+    """Test that an unset justify wraps ragged (no trailing padding)."""
+    c = make_console(width=20)
+    c.print("short")
+    assert c.file.getvalue() == b"short\n"  # Not padded to width
+
+
+def test_print_overflow_override(make_console) -> None:
+    """Test that print's overflow override truncates a long unwrapped word."""
+    c = make_console(width=6)
+    c.print("supercalifragilistic", overflow="ellipsis", no_wrap=True)
+    assert c.file.getvalue() == "super\u2026\n".encode()
