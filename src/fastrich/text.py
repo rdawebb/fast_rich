@@ -27,6 +27,26 @@ class Span(NamedTuple):
     style: Style
 
 
+def _as_style(value: str | Style | None) -> Style | None:
+    """Coerce a Text style value to a Style or None (console-free).
+
+    None stays None, a Style passes through, and a str is parsed as a style
+    definition via `Style.parse` (cached). Text is rendered without a console
+    in its hot paths, so a str here cannot be a theme name, use a container's
+    style param (Panel/Table/...) for theme-name resolution.
+
+    Args:
+        value: None, a Style, or a style definition string.
+
+    Returns:
+        The resolved Style, or None.
+    """
+    if value is None or isinstance(value, Style):
+        return value
+
+    return Style.parse(value)
+
+
 class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
@@ -35,7 +55,7 @@ class Text:
     def __init__(
         self,
         text: str = "",
-        style: Style | None = None,
+        style: str | Style | None = None,
         *,
         justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
@@ -183,7 +203,7 @@ class Text:
         if not n:
             return
 
-        base = self.style or NULL_STYLE
+        base = _as_style(self.style) or NULL_STYLE
         spans = self._spans
 
         if not spans:
@@ -317,8 +337,9 @@ class Text:
         if base_style:
             base = base.combine(base_style)
 
-        if self.style:
-            base = base.combine(self.style)
+        own = _as_style(self.style)
+        if own:
+            base = base.combine(own)
 
         spans = self._spans
         edges = self._edge_points() if spans else []

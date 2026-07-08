@@ -97,3 +97,26 @@ def test_text_justify_full_preserves_span_style() -> None:
     t.stylize(Style(bold=True), 0, 5)
     line0 = t.render_lines(20)[0]
     assert any(s.style and s.style.bold and s.text == "alpha" for s in line0)
+
+
+def test_text_style_string_definition() -> None:
+    """Test that Text.style accepts a style definition string."""
+    line = Text("hi", style="bold red").render_lines(2)[0]
+    assert line[0].style == Style.parse("bold red")
+
+
+def test_progress_column_style_string() -> None:
+    """Test that a progress column style string flows into the cell Text."""
+    import io
+
+    from fastrich.console import Console
+    from fastrich.progress import Progress, TextColumn
+
+    p = Progress(TextColumn("{description}", style="green"))
+    p.add_task("task")
+    c = Console(
+        file=io.BytesIO(), color_system="standard", force_terminal=True, width=40
+    )
+    c.file.encoding = "utf-8"
+    c.print(p)
+    assert b"\x1b[32m" in c.file.getvalue()

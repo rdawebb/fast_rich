@@ -88,7 +88,7 @@ class TextColumn:
     flex = False
 
     def __init__(
-        self, template: str = "{description}", style: Style | None = None
+        self, template: str = "{description}", style: str | Style | None = None
     ) -> None:
         """Initialise the TextColumn with a template and style.
 
