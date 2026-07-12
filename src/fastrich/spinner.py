@@ -49,13 +49,29 @@ class Spinner:
         ) / speed  # cli-spinners ms -> seconds
         self.text = text
         self.style = style
-        self._start = None
+        self._start: float | None = None
 
         # Fixed per-tick Segment set: frames and label never change between ticks
         self._frame_segments = [Segment(frame, style) for frame in self.frames]
         label = text if isinstance(text, str) else text.plain
         self._label_segment = Segment(" " + label) if label else None
         self._byte_cache: dict[tuple, bytes] = {}
+
+    def frame_index(self) -> int:
+        """The index of the frame the spinner would draw right now.
+
+        Starts the clock on first call, callers cache against this, so it changes
+        exactly when the drawn frame changes.
+
+        Returns:
+            The current frame index.
+        """
+        if self._start is None:
+            self._start = _time.monotonic()
+
+        elapsed = _time.monotonic() - self._start
+
+        return int(elapsed / self.interval) % len(self._frame_segments)
 
     def _segments_at(self, elapsed: float) -> Iterable[Segment]:
         """Yield the segments to display at the given elapsed time.
@@ -84,10 +100,10 @@ class Spinner:
         Yields:
             The segments to display the spinner.
         """
-        if self._start is None:
-            self._start = _time.monotonic()
+        yield self._frame_segments[self.frame_index()]
 
-        yield from self._segments_at(_time.monotonic() - self._start)
+        if self._label_segment is not None:
+            yield self._label_segment
 
     def __rich_bytes__(self, console: Console, options: ConsoleOptions) -> bytes:
         """Return the encoded bytes for the current frame, without a trailing end.
@@ -104,12 +120,7 @@ class Spinner:
         Returns:
             The encoded bytes for the current frame.
         """
-        if self._start is None:
-            self._start = _time.monotonic()
-
-        idx = int((_time.monotonic() - self._start) / self.interval) % len(
-            self._frame_segments
-        )
+        idx = self.frame_index()
         no_color, encoding = console.no_color, console.encoding
         key = (idx, no_color, encoding)
 

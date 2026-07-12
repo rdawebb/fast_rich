@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from time import monotonic
 
 from ._width import cell_len
-from .bar import ProgressBar
+from .bar import DEFAULT_CHAR, ProgressBar, bar_state
 from .segment import LineRenderable, Segment, blank
 from .text import Text
 
@@ -82,7 +82,51 @@ class Task:
         return self.total > 0 and self.completed >= self.total
 
 
-class TextColumn:
+class KeyedTextColumn:
+    """A column whose drawn text is itself the cache key.
+
+    Subclasses supply `cache_key`, which formats the text; the Text is then
+    built from that key rather than from the task.
+    """
+
+    flex = False
+    style: str | Style | None
+
+    def cache_key(self, task: Task) -> str:
+        """The text this column would draw, which is all its render depends on.
+
+        Args:
+            task: The task to render.
+
+        Returns:
+            The formatted text.
+        """
+        raise NotImplementedError
+
+    def from_key(self, key: str) -> Text:
+        """Build the renderable from an already-formatted key.
+
+        Args:
+            key: The text to draw, as returned by `cache_key`.
+
+        Returns:
+            A Text of the key in this column's style.
+        """
+        return Text(key, style=self.style)
+
+    def __call__(self, task: Task) -> Text:
+        """Render the task as a Text object.
+
+        Args:
+            task: The task to render.
+
+        Returns:
+            A Text object representing this column's view of the task.
+        """
+        return self.from_key(self.cache_key(task))
+
+
+class TextColumn(KeyedTextColumn):
     """Display the task description as text."""
 
     flex = False
@@ -99,16 +143,16 @@ class TextColumn:
         self.template = template
         self.style = style
 
-    def __call__(self, task: Task) -> Text:
-        """Render the task description as a Text object.
+    def cache_key(self, task: Task) -> str:
+        """The text this column would draw, which is all its render depends on.
 
         Args:
             task: The task to render.
 
         Returns:
-            A Text object representing the task description.
+            The formatted text.
         """
-        text = self.template.format(
+        return self.template.format(
             description=task.description,
             percentage=task.percentage,
             completed=task.completed,
@@ -116,10 +160,8 @@ class TextColumn:
             **task.fields,
         )
 
-        return Text(text, style=self.style)
 
-
-class PercentageColumn:
+class PercentageColumn(KeyedTextColumn):
     """Display the task percentage as text."""
 
     flex = False
@@ -132,16 +174,19 @@ class PercentageColumn:
         """
         self.style = style
 
-    def __call__(self, task: Task) -> Text:
-        """Render the task percentage as a Text object.
+    def cache_key(self, task: Task) -> str:
+        """The text this column would draw, which is all its render depends on.
+
+        The percentage moves continuously but the drawn text only changes at
+        whole percent, so an advance that does not cross one reuses the render.
 
         Args:
             task: The task to render.
 
         Returns:
-            A Text object representing the task percentage.
+            The formatted percentage.
         """
-        return Text(f"{task.percentage:>3.0f}%", style=self.style)
+        return f"{task.percentage:>3.0f}%"
 
 
 class BarColumn:
@@ -149,15 +194,35 @@ class BarColumn:
 
     flex = True
 
-    def __init__(self, width: int | None = None, **kwargs) -> None:
+    def __init__(
+        self, width: int | None = None, *, char: str = DEFAULT_CHAR, **kwargs
+    ) -> None:
         """Initialise the BarColumn with an optional width and additional keyword arguments.
 
         Args:
             width: The width of the progress bar.
+            char: The character the bar is drawn with.
             **kwargs: Additional keyword arguments for the progress bar.
         """
         self.width = width
+        self.char = char
         self.kwargs = kwargs
+
+    def cache_key(self, task: Task, width: int) -> tuple[int, int, bool]:
+        """The bar's drawn state, which is all its render depends on.
+
+        The bar is the one column that moves on every advance, but it only
+        redraws when its boundary crosses a half cell.
+
+        Args:
+            task: The task to render.
+            width: The width this column has been given, which the bar fills
+                unless it was constructed with a width of its own.
+
+        Returns:
+            The bar's filled cells, boundary half, and finished flag.
+        """
+        return bar_state(task.total, task.completed, self.width or width, self.char)
 
     def __call__(self, task: Task) -> ProgressBar:
         """Render the task progress as a progress bar.
@@ -169,7 +234,11 @@ class BarColumn:
             A ProgressBar object representing the task progress.
         """
         return ProgressBar(
-            total=task.total, completed=task.completed, width=self.width, **self.kwargs
+            total=task.total,
+            completed=task.completed,
+            width=self.width,
+            char=self.char,
+            **self.kwargs,
         )
 
 
@@ -209,6 +278,17 @@ class SpinnerColumn:
 
         self.spinner = Spinner(name=name, style=style)
 
+    def cache_key(self, task: Task) -> int:
+        """The current frame index, which is all the drawn output depends on.
+
+        Args:
+            task: The task being rendered (unused; the spinner is time-based).
+
+        Returns:
+            The spinner's current frame index.
+        """
+        return self.spinner.frame_index()
+
     def __call__(self, task: Task) -> Spinner:
         """Return the shared spinner (time-synced across tasks).
 
@@ -221,7 +301,7 @@ class SpinnerColumn:
         return self.spinner
 
 
-class TimeElapsedColumn:
+class TimeElapsedColumn(KeyedTextColumn):
     """Display the elapsed time for a task."""
 
     flex = False
@@ -235,19 +315,22 @@ class TimeElapsedColumn:
         """
         self.style = style
 
-    def __call__(self, task: Task) -> Text:
-        """Render the task's elapsed time.
+    def cache_key(self, task: Task) -> str:
+        """The text this column would draw, which is all its render depends on.
+
+        The clock advances continuously but the text only changes once a second,
+        so a refresh in between reuses the render.
 
         Args:
             task: The task to render.
 
         Returns:
-            A Text of the elapsed time.
+            The formatted elapsed time.
         """
-        return Text(_format_time(task.elapsed), style=self.style)
+        return _format_time(task.elapsed)
 
 
-class TimeRemainingColumn:
+class TimeRemainingColumn(KeyedTextColumn):
     """Display the remaining time for a task."""
 
     flex = False
@@ -261,16 +344,16 @@ class TimeRemainingColumn:
         """
         self.style = style
 
-    def __call__(self, task: Task) -> Text:
-        """Render the task's remaining time.
+    def cache_key(self, task: Task) -> str:
+        """The text this column would draw, which is all its render depends on.
 
         Args:
             task: The task to render.
 
         Returns:
-            A Text of the remaining time.
+            The formatted remaining time.
         """
-        return Text(_format_time(task.remaining), style=self.style)
+        return _format_time(task.remaining)
 
 
 Column = (
@@ -303,6 +386,7 @@ class Progress(LineRenderable):
         auto_refresh: bool = True,
         refresh_per_second: float = 10.0,
         transient: bool = False,
+        min_interval: float = 0.0,
         get_time: Callable[[], float] = monotonic,
     ) -> None:
         """Initialise the progress bar with the given columns and padding.
@@ -314,6 +398,8 @@ class Progress(LineRenderable):
             auto_refresh: Whether to automatically refresh the progress bar (default is True).
             refresh_per_second: The number of times to refresh per second (default is 10.0).
             transient: Whether the progress bar should be transient (default is False).
+            min_interval: Minimum seconds between draws, enforced by the live
+                display (default 0.0, no floor).
             get_time: Injectable monotonic clock for task timing (default is monotonic).
         """
         self.columns: list[Column] = list(columns) or default_columns()
@@ -324,11 +410,39 @@ class Progress(LineRenderable):
         self._auto_refresh = auto_refresh
         self._refresh_per_second = refresh_per_second
         self._transient = transient
+        self._min_interval = min_interval
         self._live = None
-        self._time_based = any(getattr(c, "time_based", False) for c in self.columns)
+        self._dirty = True
 
-        # Per-task line cache: task_id -> (signature, rendered line)
+        # Whether a column flexes, and how it keys its render
+        self._flex = [bool(getattr(c, "flex", False)) for c in self.columns]
+        self._cache_keys = [getattr(c, "cache_key", None) for c in self.columns]
+
+        # Columns driven by the clock rather than by task state
+        self._time_keys = [
+            key
+            for col, key in zip(self.columns, self._cache_keys)
+            if key is not None
+            and getattr(col, "time_based", False)
+            and not getattr(col, "flex", False)
+        ]
+        self._time_based = bool(self._time_keys)
+
+        # A KeyedTextColumn builds its renderable straight from the key
+        self._from_keys = [
+            getattr(c, "from_key", None)
+            if type(c).__call__ is KeyedTextColumn.__call__
+            else None
+            for c in self.columns
+        ]
+
+        # Per-task line cache: task_id -> (key, rendered line)
         self._line_cache: dict[int, tuple[tuple, list[Segment]]] = {}
+
+        # Per-column cache: (column index, task_id) -> (key, segments, cell width)
+        self._column_cache: dict[
+            tuple[int, int], tuple[object, list[Segment], int]
+        ] = {}
 
     def __enter__(self) -> Progress:
         """Start a managed live display for the progress bar.
@@ -344,10 +458,27 @@ class Progress(LineRenderable):
             transient=self._transient,
             auto_refresh=self._auto_refresh,
             refresh_per_second=self._refresh_per_second,
+            min_interval=self._min_interval,
+            get_time=self._get_time,
         )
         self._live.start()
 
         return self
+
+    def __rich_dirty__(self) -> bool:
+        """Whether the display is stale and should be redrawn.
+
+        A time-based column (spinner, elapsed, remaining) advances on the clock
+        rather than on task state, so it is never clean.
+
+        Returns:
+            True if a redraw is needed, False if the drawn frame is current.
+        """
+        return self._dirty or self._time_based
+
+    def __rich_clean__(self) -> None:
+        """Record that the current task state has been drawn."""
+        self._dirty = False
 
     def __exit__(self, *exc) -> None:
         """Stop the managed live display when exiting the context manager.
@@ -365,7 +496,11 @@ class Progress(LineRenderable):
             self._live.refresh()
 
     def add_task(
-        self, description: str, total: int = 100, completed: int = 0, **fields
+        self,
+        description: str,
+        total: int | float = 100,
+        completed: int | float = 0,
+        **fields,
     ) -> int:
         """Add a task to the progress bar.
 
@@ -390,6 +525,7 @@ class Progress(LineRenderable):
                 get_time=self._get_time,
             )
         )
+        self._dirty = True
 
         return tid
 
@@ -426,7 +562,10 @@ class Progress(LineRenderable):
         if description is not None:
             t.description = description
 
-        t.fields.update(fields)
+        if fields:
+            t.fields.update(fields)
+
+        self._dirty = True
 
     def advance(self, task_id: int, step: int = 1) -> None:
         """Advance the task with the given ID by the given number of steps.
@@ -437,10 +576,69 @@ class Progress(LineRenderable):
         """
         self.update(task_id, advance=step)
 
+    def _column_segments(
+        self,
+        console: Console,
+        task: Task,
+        options: ConsoleOptions,
+        index: int,
+        column: Column,
+        width: int = 0,
+        measure: bool = True,
+    ) -> tuple[list[Segment], int]:
+        """Render one column, reusing the last render when its key is unchanged.
+
+        A column without a `cache_key` is rendered every time and never touches
+        the cache.
+
+        Args:
+            console: The console to render the column on.
+            task: The task to render.
+            options: The console options (already narrowed for a flex column).
+            index: The column's position, which scopes its cache entry.
+            column: The column to render.
+            width: The width handed to a flex column, which its key takes as a
+                second argument. Ignored for a fixed column.
+            measure: Whether the caller needs the rendered width.
+
+        Returns:
+            The column's segments, and their total cell width when measured (0
+            otherwise).
+        """
+        cache_key = self._cache_keys[index]
+
+        if cache_key is None:
+            segments = list(console.render(column(task), options))
+
+            return segments, sum(cell_len(s.text) for s in segments) if measure else 0
+
+        key = cache_key(task, width) if self._flex[index] else cache_key(task)
+        cache = self._column_cache
+        slot = (index, task.id)
+
+        cached = cache.get(slot)
+        if cached is not None and cached[0] == key:
+            return cached[1], cached[2]
+
+        from_key = self._from_keys[index]
+        renderable = column(task) if from_key is None else from_key(key)
+
+        segments = list(console.render(renderable, options))
+        width = sum(cell_len(s.text) for s in segments) if measure else 0
+        cache[slot] = (key, segments, width)
+
+        return segments, width
+
     def _render_task(
         self, console: Console, task: Task, options: ConsoleOptions
     ) -> list[Segment]:
         """Render the task as a series of segments.
+
+        Only the columns whose keys changed are re-rendered; the rest come back
+        from the column cache. Every column quantises: an advance rebuilds the
+        bar only if it moved the boundary half cell, and the percentage only if
+        it crossed a whole percent, while the description is reused throughout.
+        An advance too fine to move any of them rebuilds nothing.
 
         Args:
             console: The console to render the task on.
@@ -455,36 +653,41 @@ class Progress(LineRenderable):
         ncols = len(self.columns)
         ngutters = max(0, ncols - 1)
 
-        fixed: list[
-            Column | list[Segment]
-        ] = []  # flex column (callable) | pre-rendered
+        fixed: list[list[Segment] | None] = []  # Pre-rendered | None for a flex column
         used = 0
         flexcount = 0
-        for col in self.columns:
-            if getattr(col, "flex", False):
-                fixed.append(col)
+        for i, (col, flex) in enumerate(zip(self.columns, self._flex)):
+            if flex:
+                fixed.append(None)
                 flexcount += 1
 
             else:
-                segs = list(console.render(col(task), options))
-                used += sum(cell_len(s.text) for s in segs)
+                segs, w = self._column_segments(console, task, options, i, col)
+                used += w
                 fixed.append(segs)
 
         remaining = max(0, width - used - gutter * ngutters)
         flexw = remaining // flexcount if flexcount else 0
+        flex_options = options._replace(max_width=flexw) if flexcount else options
 
         line: list[Segment] = []
-        for i, item in enumerate(fixed):
+        for i, segs in enumerate(fixed):
             if i:
                 line.append(blank(gutter))
 
-            if isinstance(item, Column):
-                line.extend(
-                    console.render(item(task), options._replace(max_width=flexw))
+            if segs is None:
+                # Measuring skipped for flex columns
+                segs, _ = self._column_segments(
+                    console,
+                    task,
+                    flex_options,
+                    i,
+                    self.columns[i],
+                    flexw,
+                    measure=False,
                 )
 
-            else:
-                line.extend(item)
+            line.extend(segs)
 
         return line
 
@@ -495,24 +698,34 @@ class Progress(LineRenderable):
             console: The console to render to.
             options: The console options.
 
-        Yields:
+        Returns:
             The segments representing the rendered progress bar.
         """
         width = options.max_width
         cache = self._line_cache
-        time_based = self._time_based
+        time_keys = self._time_keys
         out: list[list[Segment]] = []
+
         for task in self.tasks:
-            sig = None if time_based else self._task_signature(task, width)
+            sig = self._task_signature(task, width)
+
+            # A time-based column's key is folded in beside the task signature,
+            # so the line is reused across spinner frames or clock ticks
+            if sig is not None and time_keys:
+                key = (sig, tuple(cache_key(task) for cache_key in time_keys))
+
+            else:
+                key = sig
+
             cached = cache.get(task.id)
 
-            if sig is not None and cached is not None and cached[0] == sig:
+            if key is not None and cached is not None and cached[0] == key:
                 out.append(cached[1])
                 continue
 
             line = self._render_task(console, task, options)
-            if sig is not None:
-                cache[task.id] = (sig, line)
+            if key is not None:
+                cache[task.id] = (key, line)
 
             else:
                 # Unsignable task (e.g. uncomparable field keys)

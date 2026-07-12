@@ -24,6 +24,18 @@ def one_row_table(simple_table):
     return lambda a, b: simple_table([(a, b)])
 
 
+class FakeClock:
+    """A manually advanced monotonic clock."""
+
+    def __init__(self) -> None:
+        """Initialise with a zero time."""
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        """Return the current time."""
+        return self.now
+
+
 def test_render_bytes_has_no_trailing_newline(pipe, one_row_table) -> None:
     """Test that console.render_bytes returns a block with no trailing newline."""
     c = pipe()
@@ -204,6 +216,96 @@ def test_line_diff_falls_back_on_height_change(term, simple_table) -> None:
         live.update(simple_table([("1", "2"), ("3", "4")]))
         frame = c.file.getvalue()[start:]
     assert ctl.ERASE_DOWN in frame  # Full overwrite path
+
+
+def test_clean_progress_skips_render(term) -> None:
+    """Test that refreshing an unchanged Progress does not redraw."""
+    from fastrich.progress import Progress, TextColumn
+
+    c = term(width=30)
+    with Progress(TextColumn("{description}"), console=c, auto_refresh=False) as p:
+        p.add_task("task")
+        p.refresh()
+        start = len(c.file.getvalue())
+        p.refresh()  # Nothing changed since the last draw
+        p.refresh()
+        assert len(c.file.getvalue()) == start  # No bytes written at all
+
+
+def test_time_based_progress_is_never_clean(term) -> None:
+    """Test that a clock-driven column redraws even with no task mutation."""
+    from fastrich.progress import Progress, TimeElapsedColumn
+
+    c = term(width=30)
+    with Progress(TimeElapsedColumn(), console=c, auto_refresh=False) as p:
+        p.add_task("task")
+        p.refresh()
+        start = len(c.file.getvalue())
+        p.refresh()
+        assert len(c.file.getvalue()) > start  # Redrawn despite no state change
+
+
+def test_plain_renderable_always_redraws(term, one_row_table) -> None:
+    """Test that a renderable with no dirty protocol is assumed dirty."""
+    c = term()
+    t = one_row_table("1", "2")
+    with Live(t, console=c, auto_refresh=False) as live:
+        start = len(c.file.getvalue())
+        t.update_cell(0, 0, "Z")  # Mutated in place; Live cannot know
+        live.refresh()
+        assert b"Z" in c.file.getvalue()[start:]
+
+
+def test_min_interval_drops_early_refresh(term) -> None:
+    """Test that refreshes inside the min_interval floor are dropped."""
+    from fastrich.progress import Progress, TextColumn
+
+    c = term(width=30)
+    clock = FakeClock()
+    p = Progress(
+        TextColumn("{description}"),
+        console=c,
+        auto_refresh=False,
+        min_interval=0.1,
+        get_time=clock,
+    )
+    with p:
+        tid = p.add_task("task")
+        p.refresh()  # First draw, at t=0
+        start = len(c.file.getvalue())
+
+        clock.now = 0.05  # Inside the floor
+        p.update(tid, description="early")
+        p.refresh()
+        assert len(c.file.getvalue()) == start  # Dropped
+
+        clock.now = 0.11  # Past the floor
+        p.refresh()
+        assert b"early" in c.file.getvalue()[start:]  # Deferred state drawn
+
+
+def test_stop_forces_the_final_frame(term) -> None:
+    """Test that a throttled final update still lands, forced on stop."""
+    from fastrich.progress import Progress, TextColumn
+
+    c = term(width=30)
+    clock = FakeClock()
+    p = Progress(
+        TextColumn("{description}"),
+        console=c,
+        auto_refresh=False,
+        min_interval=10.0,  # Nothing would draw for 10s
+        get_time=clock,
+    )
+    with p:
+        tid = p.add_task("task")
+        p.refresh()
+        start = len(c.file.getvalue())
+        p.update(tid, description="final")
+        p.refresh()
+        assert len(c.file.getvalue()) == start  # Throttled away
+
+    assert b"final" in c.file.getvalue()[start:]  # Forced through on stop
 
 
 def test_update_marks_dirty_without_immediate_draw(term) -> None:

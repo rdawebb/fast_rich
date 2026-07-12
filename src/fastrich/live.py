@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from threading import Event, RLock, Thread
-from typing import TYPE_CHECKING
+from time import monotonic
+from typing import TYPE_CHECKING, Callable
 
 from . import control
 
@@ -22,6 +23,8 @@ class Live:
         transient: bool = False,
         auto_refresh: bool = True,
         refresh_per_second: float = 15.0,
+        min_interval: float = 0.0,
+        get_time: Callable[[], float] = monotonic,
     ) -> None:
         """Initialise a Live display.
 
@@ -32,6 +35,8 @@ class Live:
                 frame in place.
             auto_refresh: Whether to automatically refresh the display.
             refresh_per_second: The number of times to refresh per second.
+            min_interval: Minimum seconds between draws, 0 (default) draws on every refresh.
+            get_time: Injectable monotonic clock, for deterministic throttling.
         """
         if console is None:
             from .console import Console
@@ -43,6 +48,10 @@ class Live:
         self.transient = transient
         self.auto_refresh = auto_refresh
         self._interval = 1.0 / refresh_per_second if refresh_per_second > 0 else None
+        self._min_interval = min_interval
+        self._get_time = get_time
+        self._last_draw: float | None = None  # None until the first draw
+        self._dirty = True
         self._lines = 0  # Height of the last drawn block
         self._prev_lines: list[bytes] | None = None
         self._started = False
@@ -100,6 +109,9 @@ class Live:
             if not self._started:
                 return
 
+            # Throttled/clean-gated refresh drops frames, so the final one has to be forced
+            self.refresh(force=True)
+
             self._started = False
 
             if not self.console.is_terminal:
@@ -128,14 +140,66 @@ class Live:
         """
         with self._lock:
             self._renderable = renderable
+            self._dirty = True
+
             if refresh:
                 self.refresh()
 
-    def refresh(self) -> None:
-        """Redraw the current renderable, overwriting the previous frame."""
+    def touch(self) -> None:
+        """Mark the display as needing a redraw at the next refresh."""
+        self._dirty = True
+
+    def _needs_redraw(self) -> bool:
+        """Whether the renderable's state differs from the drawn frame.
+
+        A renderable that does not implement `__rich_dirty__` is assumed dirty:
+        Live has no way to know it hasn't been mutated in place.
+
+        Returns:
+            True if a redraw is needed, False if the drawn frame is current.
+        """
+        if self._dirty:
+            return True
+
+        is_dirty = getattr(self._renderable, "__rich_dirty__", None)
+
+        return True if is_dirty is None else bool(is_dirty())
+
+    def _throttled(self) -> bool:
+        """Whether a draw right now would land inside the min_interval floor.
+
+        Returns:
+            True if the draw should be dropped, False if it may proceed.
+        """
+        if not self._min_interval or self._last_draw is None:
+            return False
+
+        return self._get_time() - self._last_draw < self._min_interval
+
+    def refresh(self, *, force: bool = False) -> None:
+        """Redraw the current renderable, overwriting the previous frame.
+
+        Skipped when the renderable reports itself unchanged, or when the last
+        draw was less than `min_interval` ago. A skipped refresh leaves the
+        state dirty, so the next unthrottled refresh draws it.
+
+        Args:
+            force: Draw even if unchanged or inside the min_interval floor.
+                Used for the final frame on stop, which must not be dropped.
+        """
         with self._lock:
             if self._renderable is None:
                 return
+
+            if not force and (not self._needs_redraw() or self._throttled()):
+                return
+
+            self._last_draw = self._get_time()
+            self._dirty = False
+
+            mark_clean = getattr(self._renderable, "__rich_clean__", None)
+            if mark_clean is not None:
+                mark_clean()
 
             block = self.console.render_bytes(self._renderable)
             new_lines = block.split(b"\n")
