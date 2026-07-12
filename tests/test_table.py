@@ -127,3 +127,98 @@ def test_plain_and_markup_cells_align(render) -> None:
     out = render(t)
     lines = out.splitlines()
     assert len({len(line) for line in lines}) == 1  # every row same width
+
+
+def test_show_edge_false_drops_outer_rules(render, simple_table) -> None:
+    """Test that show_edge=False omits the top and bottom rules."""
+    t = simple_table([("1", "2")], show_edge=False)
+    lines = render(t).splitlines()
+    assert not lines[0].startswith("+")  # no top rule
+    assert not lines[-1].startswith("+")  # no bottom rule
+
+
+def test_show_edge_false_drops_side_edges(render, simple_table) -> None:
+    """Test that show_edge=False omits the left and right border glyphs."""
+    t = simple_table([("1", "2")], show_edge=False)
+    lines = render(t).splitlines()
+    assert not any(line.startswith("|") or line.endswith("|") for line in lines)
+    assert "1 | 2" in lines[-1]  # inter-column divider survives
+
+
+def test_show_edge_false_narrows_the_table(render, simple_table) -> None:
+    """Test that dropping the edges narrows the table by the two edge columns."""
+    edged = render(simple_table([("1", "2")])).splitlines()[0]
+    bare = render(simple_table([("1", "2")], show_edge=False)).splitlines()[0]
+    assert cell_len(bare) == cell_len(edged) - 2
+
+
+def test_show_edge_false_still_fills_fixed_width(render, simple_table) -> None:
+    """Test that a fixed width is filled exactly once the edges are gone."""
+    t = simple_table([("x", "y")], show_edge=False, width=20)
+    assert cell_len(render(t).splitlines()[0]) == 20
+
+
+def test_show_lines_rules_between_rows(render, simple_table) -> None:
+    """Test that show_lines draws a rule between body rows, not before the first."""
+    t = simple_table([("1", "2"), ("3", "4")], show_lines=True)
+    lines = render(t).splitlines()
+    body = [i for i, line in enumerate(lines) if "1" in line or "3" in line]
+    assert lines[body[0] + 1].startswith("+")  # rule between the two rows
+    assert "3" in lines[body[0] + 2]
+
+
+def test_show_footer_renders_column_footers(render) -> None:
+    """Test that show_footer renders each column's footer, sized to fit."""
+    t = Table(box=ASCII, show_footer=True)
+    t.add_column("A", footer="sum")
+    t.add_row("1")
+    lines = render(t).splitlines()
+    assert "sum" in lines[-2]  # footer sits above the bottom rule
+    assert "\u2026" not in lines[-2]  # not truncated: the footer sizes the column
+
+
+def test_row_styles_cycle_across_rows(render, simple_table) -> None:
+    """Test that row_styles are cycled across body rows (zebra striping)."""
+    t = simple_table([("1", "x"), ("2", "y"), ("3", "z")], row_styles=["red", "blue"])
+    lines = render(t, color="standard").splitlines()
+    red = [line for line in lines if "\x1b[31m" in line]
+    blue = [line for line in lines if "\x1b[34m" in line]
+    assert len(red) == 2  # rows 0 and 2
+    assert len(blue) == 1  # row 1
+
+
+def test_row_style_composes_over_column_style(render) -> None:
+    """Test that a column style composes under the row style."""
+    t = Table(box=ASCII, row_styles=["red"])
+    t.add_column("A", style="bold")
+    t.add_row("x")
+    assert "\x1b[1;31m" in render(t, color="standard")  # bold + red
+
+
+def test_row_cache_invalidates_on_row_styles_change(render, simple_table) -> None:
+    """Test that changing row_styles invalidates cached row segments."""
+    t = simple_table([("1", "x"), ("2", "y")], row_styles=["red"])
+    first = render(t, color="standard")
+
+    t.row_styles = ["blue"]
+    t.mark_dirty()
+    second = render(t, color="standard")
+
+    assert "\x1b[31m" in first
+    assert "\x1b[34m" in second
+    assert "\x1b[31m" not in second  # no stale red rows from the row cache
+
+
+def test_width_fixes_table_width(render, simple_table) -> None:
+    """Test that width fixes the rendered table width exactly."""
+    t = simple_table([("x", "y")], width=20)
+    assert cell_len(render(t).splitlines()[0]) == 20
+
+
+def test_min_width_is_a_floor(render, simple_table) -> None:
+    """Test that min_width grows a narrow table but never shrinks a wide one."""
+    narrow = simple_table([("x", "y")], min_width=20)
+    assert cell_len(render(narrow).splitlines()[0]) == 20
+
+    wide = simple_table([("z" * 20, "y")], min_width=8)
+    assert cell_len(render(wide).splitlines()[0]) > 8  # natural width beats the floor

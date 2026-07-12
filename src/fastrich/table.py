@@ -76,15 +76,15 @@ def _plain_line(
 class _RowFrame(NamedTuple):
     """Per-render constant Segments shared across every row of one render."""
 
-    left: Segment  # left border glyph
+    left: Segment | None  # left border glyph, None when the edge is hidden
     divider: Segment  # inter-column border glyph
-    right: Segment  # right border glyph
+    right: Segment | None  # right border glyph, None when the edge is hidden
     pads: list[Segment]  # per column: one cell-pad Segment, used both sides
     blanks: list[Segment]  # per column: a full-width blank for a short cell
 
 
 def _row_frame(
-    box: Box, bs: Style | None, widths: list[int], bases, pad: int
+    box: Box, bs: Style | None, widths: list[int], bases, pad: int, edge: bool
 ) -> _RowFrame:
     """Build the shared border/padding Segments for one render's rows.
 
@@ -94,6 +94,7 @@ def _row_frame(
         widths: The resolved column content widths.
         bases: The per-column base style.
         pad: The cell padding width.
+        edge: Whether the outer left/right border glyphs are drawn.
 
     Returns:
         The reusable border and padding Segments for the render.
@@ -107,9 +108,9 @@ def _row_frame(
         blanks.append(Segment(_spaces(w + 2 * pad), fill))
 
     return _RowFrame(
-        Segment(box.left, bs),
+        Segment(box.left, bs) if edge else None,
         Segment(box.divider, bs),
-        Segment(box.right, bs),
+        Segment(box.right, bs) if edge else None,
         pads,
         blanks,
     )
@@ -120,6 +121,7 @@ class Column:
 
     __slots__ = (
         "header",
+        "footer",
         "justify",
         "style",
         "header_style",
@@ -133,6 +135,7 @@ class Column:
         self,
         header: str = "",
         *,
+        footer: str | Text = "",
         justify: Literal["left", "center", "right"] = "left",
         style: str | Style | None = None,
         header_style: str | Style | None = None,
@@ -145,6 +148,7 @@ class Column:
 
         Args:
             header: The column header text.
+            footer: The column footer text (shown when show_footer=True).
             justify: How to justify the column content.
             style: The column content style.
             header_style: The column header style.
@@ -154,6 +158,7 @@ class Column:
             no_wrap: Whether to disable wrapping of content.
         """
         self.header = header
+        self.footer = footer
         self.justify = justify
         self.style = style
         self.header_style = header_style
@@ -172,6 +177,13 @@ class Table(CachedBytes):
         box: Box = SQUARE,
         padding: int = 1,
         show_header: bool = True,
+        show_edge: bool = True,
+        show_lines: bool = False,
+        show_footer: bool = False,
+        footer_style: str | Style | None = None,
+        row_styles: Sequence[str | Style] | None = None,
+        width: int | None = None,
+        min_width: int | None = None,
         header_style: str | Style | None = None,
         border_style: str | Style | None = None,
         style: str | Style | None = None,
@@ -188,6 +200,13 @@ class Table(CachedBytes):
             box: The box style for the table.
             padding: The padding around the table.
             show_header: Whether to show the header row.
+            show_edge: Draw the outer border (top/bottom rules and side edges).
+            show_lines: Draw a rule between body rows.
+            show_footer: Show a footer row built from each column's `footer`.
+            footer_style: Style for the footer row.
+            row_styles: Styles cycled across body rows (e.g. zebra striping).
+            width: Fixed table width (content is fitted to it).
+            min_width: Minimum table width.
             header_style: The style for the header row.
             border_style: The style for the table border.
             style: Base style for whole table, cell/column styles compose over.
@@ -213,6 +232,13 @@ class Table(CachedBytes):
         self.box: Box = box
         self.padding = padding
         self.show_header = show_header
+        self.show_edge = show_edge
+        self.show_lines = show_lines
+        self.show_footer = show_footer
+        self.footer_style = footer_style
+        self.row_styles = list(row_styles) if row_styles else []
+        self.width = width
+        self.min_width = min_width
         self.header_style = (
             header_style if header_style is not None else Style(bold=True)
         )
@@ -380,6 +406,9 @@ class Table(CachedBytes):
         for i, col in enumerate(self.columns):
             w = cell_len(_cell_plain(headers[i])) if self.show_header else 0
 
+            if self.show_footer and col.footer:
+                w = max(w, cell_len(_cell_plain(col.footer)))
+
             if col.min_width:
                 w = max(w, col.min_width)
 
@@ -463,11 +492,25 @@ class Table(CachedBytes):
             return Measurement(0, 0)
 
         _, _, nat = self._resolve(console)
-        overhead = (ncols + 1) + 2 * self.padding * ncols
+        overhead = self._border_cols(ncols) + 2 * self.padding * ncols
         maximum = sum(nat) + overhead
         minimum = ncols + overhead  # One column per cell
 
         return Measurement(minimum, maximum)
+
+    def _border_cols(self, ncols: int) -> int:
+        """Return the number of cells the vertical borders occupy.
+
+        One divider between each pair of columns, plus the two outer edges when
+        `show_edge` is on.
+
+        Args:
+            ncols: The number of columns.
+
+        Returns:
+            The width taken by the vertical borders.
+        """
+        return ncols + 1 if self.show_edge else ncols - 1
 
     def _framed_row_lines(
         self,
@@ -508,9 +551,10 @@ class Table(CachedBytes):
 
         # The borders and cell-padding come from `frame`
         pads = frame.pads
+        left, right = frame.left, frame.right
         out = []
         for li in range(height):
-            line = [frame.left]
+            line = [left] if left else []
             for ci, cl in enumerate(cell_lines):
                 if ci:
                     line.append(frame.divider)
@@ -523,7 +567,9 @@ class Table(CachedBytes):
                 else:
                     line.append(frame.blanks[ci])  # Blank line for short cell
 
-            line.append(frame.right)
+            if right:
+                line.append(right)
+
             out.append(line)
 
         return out
@@ -579,8 +625,22 @@ class Table(CachedBytes):
 
         headers, rows, nat = self._resolve(console)
         pad = self.padding
-        overhead = (ncols + 1) + 2 * pad * ncols
-        widths = self._fit_to(nat, options.max_width - overhead, self.expand)
+        edge = self.show_edge
+        overhead = self._border_cols(ncols) + 2 * pad * ncols
+
+        avail = options.max_width
+        expand = self.expand
+        if self.width is not None:
+            avail = min(self.width, options.max_width)
+            expand = True  # Fixed width filled exactly
+
+        elif self.min_width is not None:
+            floor = min(self.min_width, options.max_width)
+            if sum(nat) + overhead < floor:
+                avail = floor  # Expand to fill available width
+                expand = True
+
+        widths = self._fit_to(nat, avail - overhead, expand)
         wkey = tuple(widths)  # Row reflows if the resolved widths change
 
         b = self.box
@@ -588,9 +648,13 @@ class Table(CachedBytes):
         hstyle = console.resolve_style(self.header_style)
         col_styles = [console.resolve_style(c.style) for c in self.columns]
         col_hstyles = [console.resolve_style(c.header_style) for c in self.columns]
+        fstyle = console.resolve_style(self.footer_style)
+        row_styles = [console.resolve_style(rs) for rs in self.row_styles]
 
         def hrule(left: str, mid: str, div: str, right: str) -> list[Segment]:
             """Render a horizontal rule with the given glyphs and widths.
+
+            The outer `left`/`right` glyphs are dropped when `show_edge` is off.
 
             Args:
                 left: The left glyph.
@@ -601,17 +665,19 @@ class Table(CachedBytes):
             Returns:
                 The horizontal rule as a single styled segment.
             """
-            parts = [left]
+            parts = [left] if edge else []
             for i, w in enumerate(widths):
                 if i:
                     parts.append(div)
 
                 parts.append(mid * (w + 2 * pad))
-            parts.append(right)
+
+            if edge:
+                parts.append(right)
 
             return [Segment("".join(parts), bs)]
 
-        table_w = sum(w + 2 * pad for w in widths) + (ncols + 1)
+        table_w = sum(w + 2 * pad for w in widths) + self._border_cols(ncols)
 
         lines = []
         if self.title:
@@ -619,37 +685,86 @@ class Table(CachedBytes):
                 self._banner(console, options, self.title, self.title_justify, table_w)
             )
 
-        lines.append(hrule(b.top_left, b.top, b.top_divider, b.top_right))
+        if self.show_edge:
+            lines.append(hrule(b.top_left, b.top, b.top_divider, b.top_right))
 
         if self.show_header:
             header_bases = [ch or hstyle for ch in col_hstyles]
-            header_frame = _row_frame(b, bs, widths, header_bases, pad)
+            header_frame = _row_frame(b, bs, widths, header_bases, pad, edge)
             lines.extend(
                 self._framed_row_lines(headers, widths, header_bases, pad, header_frame)
             )
             lines.append(hrule(b.head_left, b.head, b.head_divider, b.head_right))
 
-        body_bases = col_styles
+        nstyles = len(row_styles)
+        frames = {}
 
-        # One shared set of border/padding Segments for every body row
-        body_frame = _row_frame(b, bs, widths, body_bases, pad)
+        def bases_and_frame(rs):
+            """Return the combined bases and frame for a given row style.
+
+            Args:
+                rs: The row style to get the bases and frame for.
+
+            Returns:
+                A tuple of the combined bases and frame for the given row style."""
+            key = rs._key if rs else None
+            hit = frames.get(key)
+
+            if hit is None:
+                bases = (
+                    [rs.combine(cs) if cs else rs for cs in col_styles]
+                    if rs
+                    else col_styles
+                )
+                hit = (bases, _row_frame(b, bs, widths, bases, pad, edge))
+                frames[key] = hit
+
+            return hit
+
+        rule_line = (
+            hrule(b.head_left, b.head, b.head_divider, b.head_right)
+            if self.show_lines
+            else None
+        )
+
         cache = self._row_cache
         versions = self._row_versions
+        skey = tuple(rs._key if rs else None for rs in row_styles)
 
         for i, row in enumerate(rows):
+            rs = row_styles[i % nstyles] if nstyles else None
             entry = cache[i]
-            if entry is not None and entry[0] == versions[i] and entry[1] == wkey:
+            if (
+                entry is not None
+                and entry[0] == versions[i]
+                and entry[1] == wkey
+                and entry[3] == skey
+            ):
                 row_lines = entry[2]  # Clean row, reuse segments
 
             else:
-                row_lines = self._framed_row_lines(
-                    row, widths, body_bases, pad, body_frame
-                )
-                cache[i] = (versions[i], wkey, row_lines)
+                bases, frame = bases_and_frame(rs)
+                row_lines = self._framed_row_lines(row, widths, bases, pad, frame)
+                cache[i] = (versions[i], wkey, row_lines, skey)
+
+            if rule_line is not None and i:
+                lines.append(rule_line)
 
             lines.extend(row_lines)
 
-        lines.append(hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right))
+        if self.show_footer:
+            footers = [self._to_cell(c.footer, console) for c in self.columns]
+            footer_bases = [fstyle or cs for cs in col_styles]
+            footer_frame = _row_frame(b, bs, widths, footer_bases, pad, edge)
+            lines.append(hrule(b.head_left, b.head, b.head_divider, b.head_right))
+            lines.extend(
+                self._framed_row_lines(footers, widths, footer_bases, pad, footer_frame)
+            )
+
+        if self.show_edge:
+            lines.append(
+                hrule(b.bottom_left, b.bottom, b.bottom_divider, b.bottom_right)
+            )
 
         if self.caption:
             lines.append(

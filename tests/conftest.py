@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import pytest
 
@@ -179,25 +179,29 @@ def sample_table() -> Callable[[], Table]:
 def simple_table() -> Callable[..., Table]:
     """Factory building a fresh ASCII table from a sequence of row tuples.
 
-    Args:
-        rows: The rows of the table as a sequence of tuples.
-        headers: The column headers as a sequence of strings.
+    `simple_table(rows, headers=("A", "B"), **table_kw)`, where `table_kw`
+    carries Table options such as `show_edge=`, `show_lines=` and `row_styles=`.
 
     Returns:
         The constructed Table.
     """
 
-    def _make(rows, headers=("A", "B")) -> Table:
+    def _make(
+        rows: Sequence[tuple[str, ...]],
+        headers: Sequence[str] = ("A", "B"),
+        **table_kw: Any,
+    ) -> Table:
         """Construct an ASCII table from the given rows and headers.
 
         Args:
             rows: The rows of the table as a sequence of tuples.
             headers: The column headers as a sequence of strings.
+            table_kw: Additional Table options.
 
         Returns:
             The constructed Table.
         """
-        t = Table(*headers, box=ASCII)
+        t = Table(*headers, box=ASCII, **table_kw)
         for row in rows:
             t.add_row(*row)
 
