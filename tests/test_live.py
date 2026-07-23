@@ -4,6 +4,7 @@ import pytest
 
 from fastrich import control as ctl
 from fastrich.live import Live
+from fastrich.text import Text
 
 
 @pytest.fixture
@@ -319,3 +320,46 @@ def test_update_marks_dirty_without_immediate_draw(term) -> None:
         assert len(c.file.getvalue()) == before  # No draw from mutation
         p.refresh()
         assert b"changed" in c.file.getvalue()[before:]  # Explicit refresh draws
+
+
+def test_live_screen_brackets_alt_buffer(make_console) -> None:
+    """Test that screen=True enters and exits the alternate screen buffer."""
+    c = make_console(force_terminal=True, color=None, width=20)
+    with Live("hi", console=c, screen=True, auto_refresh=False):
+        pass
+
+    out = c.file.getvalue()
+    enter = out.find(ctl.ALT_SCREEN_ENTER)
+    exit_ = out.find(ctl.ALT_SCREEN_EXIT)
+    assert enter != -1 and exit_ != -1  # Both brackets emitted
+    assert enter < exit_  # Entered before exiting
+    assert ctl.SHOW_CURSOR in out  # Cursor restored on stop
+
+
+def test_live_vertical_overflow_ellipsis(make_console) -> None:
+    """Test that a frame taller than the console is cropped with an ellipsis."""
+    c = make_console(force_terminal=True, color=None, width=20, height=3)
+    live = Live(
+        Text("a\nb\nc\nd\ne"),
+        console=c,
+        auto_refresh=False,
+        vertical_overflow="ellipsis",
+    )
+    live.start()
+    assert live._lines == 3  # Clipped to console height
+    assert b"..." in c.file.getvalue()
+    live.stop()
+
+
+def test_live_vertical_overflow_visible(make_console) -> None:
+    """Test that visible overflow draws the full frame, uncropped."""
+    c = make_console(force_terminal=True, color=None, width=20, height=3)
+    live = Live(
+        Text("a\nb\nc\nd\ne"),
+        console=c,
+        auto_refresh=False,
+        vertical_overflow="visible",
+    )
+    live.start()
+    assert live._lines == 5  # Full height, not clipped
+    live.stop()

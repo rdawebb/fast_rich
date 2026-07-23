@@ -74,6 +74,7 @@ class CaptureStdout(io.TextIOWrapper):
 def _build_console(
     *,
     width: int = 80,
+    height: int | None = None,
     color: str | None = None,
     force_terminal: Any = _DERIVE,
     **console_kw: Any,
@@ -88,6 +89,7 @@ def _build_console(
 
     Args:
         width: The console width.
+        height: The console height, or `None` for the default.
         color: The color system to use.
         force_terminal: Whether to force a terminal sink, or `None` to detect from environment.
         console_kw: Additional console options.
@@ -101,6 +103,7 @@ def _build_console(
     return Console(
         file=CaptureStdout(),
         width=width,
+        height=height,
         color_system=color,
         force_terminal=force_terminal,
         **console_kw,

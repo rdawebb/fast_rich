@@ -58,6 +58,7 @@ class ConsoleOptions(NamedTuple):
     justify: Literal["left", "center", "right", "full"] | None = None
     overflow: Literal["fold", "ellipsis", "crop"] | None = None
     no_wrap: bool | None = None
+    soft_wrap: bool | None = None
 
 
 class Console:
@@ -68,24 +69,39 @@ class Console:
         *,
         file: Any | None = None,
         width: int | None = None,
+        height: int | None = None,
         color_system: str | None = "auto",
         force_terminal: bool | None = None,
         markup: bool = True,
         emoji: bool = True,
         theme: Theme | None = None,
+        stderr: bool = False,
+        no_color: bool = False,
+        soft_wrap: bool = False,
     ) -> None:
         """Initialise the Console with optional file, width, color system, and force terminal settings.
 
         Args:
             file: The file-like object to write output to. Defaults to sys.stdout.
             width: The width of the terminal. Defaults to the terminal width.
+            height: The height of the terminal. Defaults to the terminal height.
             color_system: The color system to use. Defaults to "auto".
             force_terminal: Whether to force the use of a terminal. Defaults to None.
             markup: Whether to parse console markup in strings. Defaults to True.
             emoji: Whether to replace emoji :shortcodes: in strings. Defaults to True.
+            stderr: Write to stderr instead of stdout (when no file is specified). Defaults to False.
+            no_color: Force disable color output regardless of color system. Defaults to False.
+            soft_wrap: Wrap text to fit within the terminal width. Defaults to False.
         """
-        self.file: Any = file if file is not None else sys.stdout
+        if file is not None:
+            self.file: Any = file
+        else:
+            self.file = sys.stderr if stderr else sys.stdout
+
         self._width = width
+        self._height = height
+        self._no_color = no_color
+        self.soft_wrap = soft_wrap
         self._force_terminal = force_terminal
         self._markup = markup
         self._emoji = emoji
@@ -117,26 +133,27 @@ class Console:
         Returns:
             The size of the console as (width, height).
         """
+        height = self._height if self._height is not None else 25
         if self._width is not None:
-            return self._width, 25
+            return self._width, height
 
         cols = os.environ.get("COLUMNS")
         if cols and cols.isdigit():
-            return int(cols), 25
+            return int(cols), height
 
         fd = self._fileno()
         if fd is None and sys.__stdout__ is not None:
             fd = sys.__stdout__.fileno()
 
         if fd is None:
-            return 80, 25
+            return 80, height
 
         try:
             ts = os.get_terminal_size(fd)
             return ts.columns, ts.lines
 
         except (OSError, ValueError):
-            return 80, 25
+            return 80, height
 
     @property
     def width(self) -> int:
@@ -146,6 +163,15 @@ class Console:
             The width of the console.
         """
         return self.size[0]
+
+    @property
+    def height(self) -> int:
+        """Return the height of the console.
+
+        Returns:
+            The height of the console.
+        """
+        return self.size[1]
 
     @property
     def is_terminal(self) -> bool:
@@ -200,7 +226,7 @@ class Console:
         Returns:
             True if color is disabled, False otherwise.
         """
-        return self.color_system is None
+        return self._no_color or self.color_system is None
 
     @cached_property
     def encoding(self) -> str:
@@ -521,6 +547,7 @@ class Console:
         justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
         no_wrap: bool | None = None,
+        soft_wrap: bool | None = None,
     ) -> None:
         """Print the given objects to the console, applying the given style if provided.
 
@@ -535,9 +562,14 @@ class Console:
             justify: Per-call override for text justification.
             overflow: Per-call override for text overflow behavior.
             no_wrap: Per-call override for text wrapping.
+            soft_wrap: Per-call soft-wrap override; when set, text is emitted
+                unwrapped (the terminal wraps). Falls back to the console default.
         """
         if end is None:
             end = getattr(objects[0], "end", "\n") if len(objects) == 1 else "\n"
+
+        if soft_wrap is None:
+            soft_wrap = self.soft_wrap
 
         if style is not None and not isinstance(style, Style):
             style = self._resolve_style(style)
@@ -558,6 +590,7 @@ class Console:
                 justify,
                 overflow,
                 no_wrap,
+                soft_wrap,
             )
             cache = self._print_cache
             cached = cache.get(key)
@@ -567,9 +600,15 @@ class Console:
 
             else:
                 no_color, encoding = self.no_color, self.encoding
+                t = self._str_to_text(text, style, markup)
 
-                if formatted or (use_markup and "[" in text):
-                    t = self._str_to_text(text, style, markup)
+                if soft_wrap:
+                    lines = [
+                        encode_line(tuple(line), no_color, encoding)
+                        for line in split_lines(t._segments())
+                    ]
+
+                elif formatted or (use_markup and "[" in text):
                     lines = [
                         encode_line(tuple(line), no_color, encoding)
                         for line in t.render_lines(
@@ -620,7 +659,7 @@ class Console:
             return
 
         opts = self.options._replace(
-            justify=justify, overflow=overflow, no_wrap=no_wrap
+            justify=justify, overflow=overflow, no_wrap=no_wrap, soft_wrap=soft_wrap
         )
         segments = []
         for i, obj in enumerate(objects):

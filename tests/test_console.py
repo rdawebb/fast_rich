@@ -8,6 +8,13 @@ from fastrich.style import Style
 from fastrich.text import Text
 
 
+def test_console_height(make_console) -> None:
+    """Test that a configured height is reported by size/height."""
+    c = make_console(width=10, height=7)
+    assert c.height == 7
+    assert c.size == (10, 7)
+
+
 def test_width_override_and_size(make_console) -> None:
     """Test that width override and size are correctly applied to the Console instance."""
     c = make_console(width=20)
@@ -34,6 +41,16 @@ def test_no_color_env_wins(monkeypatch, make_console) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     c = make_console(color="auto", force_terminal=True)
     assert c.no_color is True
+
+
+def test_console_no_color_override(make_console) -> None:
+    """Test that no_color=True disables color despite a color system."""
+    c = make_console(
+        color="standard",
+        no_color=True,
+    )
+    c.print("[red]hi[/]")
+    assert c.file.getvalue() == b"hi\n"
 
 
 def test_force_color_marks_terminal(monkeypatch, make_console) -> None:
@@ -138,3 +155,25 @@ def test_print_overflow_override(make_console) -> None:
     c = make_console(width=6)
     c.print("supercalifragilistic", overflow="ellipsis", no_wrap=True)
     assert c.file.getvalue() == "super\u2026\n".encode()
+
+
+def test_console_stderr_sink() -> None:
+    """Test that stderr=True selects sys.stderr when no file is given."""
+    import sys
+
+    c = Console(stderr=True)
+    assert c.file is sys.stderr
+
+
+def test_console_soft_wrap_default(make_console) -> None:
+    """Test that soft_wrap emits text unwrapped (terminal wraps it)."""
+    c = make_console(color=None, width=8, soft_wrap=True)
+    c.print("one two three four")
+    assert c.file.getvalue() == b"one two three four\n"
+
+
+def test_print_soft_wrap_override(make_console) -> None:
+    """Test that a per-print soft_wrap overrides the console default."""
+    c = make_console(color=None, width=8)
+    c.print("one two three four", soft_wrap=True)
+    assert c.file.getvalue() == b"one two three four\n"

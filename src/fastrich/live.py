@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from threading import Event, RLock, Thread
 from time import monotonic
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Literal
 
 from . import control
 
@@ -25,6 +25,8 @@ class Live:
         refresh_per_second: float = 15.0,
         min_interval: float = 0.0,
         get_time: Callable[[], float] = monotonic,
+        screen: bool = False,
+        vertical_overflow: Literal["crop", "ellipsis", "visible"] = "ellipsis",
     ) -> None:
         """Initialise a Live display.
 
@@ -37,6 +39,10 @@ class Live:
             refresh_per_second: The number of times to refresh per second.
             min_interval: Minimum seconds between draws, 0 (default) draws on every refresh.
             get_time: Injectable monotonic clock, for deterministic throttling.
+            screen: Render to an alternate screen buffer for the session.
+            vertical_oveflow: How to handle a frame taller than the console;
+                "crop" (truncate), "ellipsis" (truncate with a marker), or
+                "visible" (draw in full).
         """
         if console is None:
             from .console import Console
@@ -46,6 +52,8 @@ class Live:
         self.console = console
         self._renderable = renderable
         self.transient = transient
+        self.screen = screen
+        self.vertical_overflow = vertical_overflow
         self.auto_refresh = auto_refresh
         self._interval = 1.0 / refresh_per_second if refresh_per_second > 0 else None
         self._min_interval = min_interval
@@ -85,6 +93,8 @@ class Live:
                 return
 
             self._started = True
+            if self.screen:
+                self.console._write_control(control.ALT_SCREEN_ENTER, control.HOME)
             self.console.show_cursor(False)
 
             if self._renderable is not None:
@@ -121,15 +131,17 @@ class Live:
                 self.console.show_cursor(True)
                 return
 
-            if self.transient and self._lines:
+            if self.transient and self._lines and not self.screen:
                 self.console._write_control(
                     control.CR, control.up(self._lines - 1), control.ERASE_DOWN
                 )
 
-            elif self._lines:
+            elif self._lines and not self.screen:
                 self.console._write_bytes(b"\n")  # Move the cursor past the block
 
             self.console.show_cursor(True)
+            if self.screen:
+                self.console._write_control(control.ALT_SCREEN_EXIT)
 
     def update(self, renderable, *, refresh: bool = True) -> None:
         """Replace the displayed renderable and optionally redraw.
@@ -203,11 +215,14 @@ class Live:
 
             block = self.console.render_bytes(self._renderable)
             new_lines = block.split(b"\n")
-            height = len(new_lines)
 
             if not self.console.is_terminal:
                 self._pending = block  # Drawn once, on stop
                 return
+
+            new_lines = self._clip(new_lines)
+            block = b"\n".join(new_lines)
+            height = len(new_lines)
 
             if self._prev_lines is not None and len(self._prev_lines) == height:
                 self.console._write_bytes(
@@ -225,6 +240,28 @@ class Live:
 
             self._prev_lines = new_lines
             self._lines = height
+
+    def _clip(self, lines: list[bytes]) -> list[bytes]:
+        """Clip a frame to the console's height, truncating if necessary.
+
+        Args:
+            lines: The frame's per-line bytes.
+
+        Returns:
+            The clipped frame's per-line bytes.
+        """
+        if self.vertical_overflow == "visible":
+            return lines
+
+        limit = self.console.height
+        if len(lines) <= limit or limit < 1:
+            return lines
+
+        clipped = lines[:limit]
+        if self.vertical_overflow == "ellipsis":
+            clipped[-1] = b"..."
+
+        return clipped
 
     def _diff_bytes(self, prev: list[bytes], new: list[bytes], height: int) -> bytes:
         """Build the byte sequence that rewrites only the changed lines.
