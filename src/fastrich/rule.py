@@ -52,6 +52,7 @@ class Rule(LineRenderable):
         style: str | Style | None = None,
         title_style: str | Style | None = None,
         align: Literal["left", "center", "right"] = "center",
+        end: str = "\n",
     ) -> None:
         """Initialise a Rule with the given title and character set.
 
@@ -61,12 +62,15 @@ class Rule(LineRenderable):
             style: The style to apply to the rule.
             title_style: The style to apply to the title.
             align: The alignment of the rule and title.
+            end: Text written after the rule when printed on its own (default a
+                newline). An explicit `end=` on `print` takes precedence.
         """
         self.title = title
         self.characters = characters or "─"
         self.style = style
         self.title_style = title_style
         self.align = align
+        self.end = end
 
     def _lines(self, console: Console, options: ConsoleOptions) -> list[list[Segment]]:
         """Render the rule as a series of styled segments.
@@ -94,8 +98,10 @@ class Rule(LineRenderable):
         side = width - tlen
         if self.align == "left":
             left = 1
+
         elif self.align == "right":
             left = side - 1
+
         else:
             left = side // 2
 

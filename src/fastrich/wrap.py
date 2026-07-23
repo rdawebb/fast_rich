@@ -7,9 +7,14 @@ than the width are hard-broken at codepoint boundaries.
 
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from ._width import cell_len, char_cell_len
+
+# A run of non-spaces (group 1) plus the spaces on either side; the leading
+# spaces only ever attach to the first word of a range
+_WORD_RE = re.compile(r" *([^ ]+) *")
 
 
 def fit_end(text: str, width: int) -> int:
@@ -84,6 +89,60 @@ def _hard_break(text: str, start: int, end: int, width: int) -> list[tuple[int, 
     return chunks
 
 
+def nofold_offsets(
+    text: str, start: int, end: int, width: int, ascii_only: bool | None = None
+) -> list[int]:
+    """Break offsets for no-fold wrapping of `text[start:end]` to `width`.
+
+    A word is a run of non-spaces plus any spaces to its right; the first word
+    also takes leading spaces.
+
+    Args:
+        text: The full string (offsets index into it, not into a slice).
+        start: The start index of the range to wrap.
+        end: The end index of the range to wrap.
+        width: The maximum width allowed for each line.
+        ascii_only: Whether `text` is all-ASCII.
+
+    Returns:
+        Indices within (start, end) at which to break the line.
+    """
+    if ascii_only is None:
+        ascii_only = text.isascii()
+
+    # ASCII width == character count
+    if ascii_only and end - start <= width:
+        return []
+
+    breaks: list[int] = []
+    append = breaks.append
+    _cell_len = cell_len
+    cell_offset = 0
+
+    for match in _WORD_RE.finditer(text, start, end):
+        lead = match.start()
+        stripped_end = match.end(1)
+        trail_end = match.end()
+
+        # Trailing spaces never merge into the preceding cluster
+        word_w = (
+            stripped_end - lead if ascii_only else _cell_len(text[lead:stripped_end])
+        )
+        full_w = word_w + (trail_end - stripped_end)
+
+        if word_w <= width - cell_offset:
+            cell_offset += full_w
+
+        else:
+            # Reaching here means `cell_offset` is non-zero
+            if lead > start:
+                append(lead)
+
+            cell_offset = full_w
+
+    return breaks
+
+
 def wrap_offsets(text: str, width: int) -> list[tuple[int, int]]:
     """Return a list of (start, end) line ranges wrapping `text` to `width`.
 
@@ -108,7 +167,8 @@ def wrap_offsets(text: str, width: int) -> list[tuple[int, int]]:
     cur_s = cur_e = None
     cur_w = 0
 
-    def flush():
+    def flush() -> None:
+        """Append the current line to `lines` and reset the cursor."""
         nonlocal cur_s, cur_e, cur_w
         if cur_s is not None and cur_e is not None:
             lines.append((cur_s, cur_e))

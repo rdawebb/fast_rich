@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
-    from .measure import Measurement
-    from .segment import Segment
 
 from ._width import cell_len
+from .measure import Measurement
+from .segment import _NEWLINE, Segment, blank
 from .style import NULL_STYLE, Style
-from .wrap import fit_end, wrap_offsets
+from .wrap import fit_end, nofold_offsets, wrap_offsets
 
 
 class Span(NamedTuple):
@@ -196,8 +196,6 @@ class Text:
         Yields:
             The next segment of the text.
         """
-        from .segment import Segment
-
         text = self.plain
         n = len(text)
         if not n:
@@ -235,8 +233,6 @@ class Text:
         Yields:
             Segments for each wrapped line, separated by newline segments.
         """
-        from .segment import _NEWLINE
-
         lines = self.render_lines(
             options.max_width,
             options.justify,
@@ -265,8 +261,6 @@ class Text:
         Returns:
             A Measurement of the minimum and maximum width of the text.
         """
-        from .measure import Measurement
-
         lines = self.plain.split("\n")
         maximum = max((cell_len(line) for line in lines), default=0)
         minimum = max(
@@ -328,8 +322,6 @@ class Text:
         overflow = overflow if overflow is not None else (self.overflow or "fold")
         no_wrap = no_wrap if no_wrap is not None else bool(self.no_wrap)
 
-        from .segment import Segment, blank
-
         text = self.plain
         n = len(text)
 
@@ -372,19 +364,24 @@ class Text:
 
             return out
 
-        def line(start: int, end: int, ellipsis: bool = False) -> list[Segment]:
+        def line(
+            start: int, end: int, ellipsis: bool = False, used: int | None = None
+        ) -> list[Segment]:
             """Return a line of text as a list of segments, with optional ellipsis and padding.
 
             Args:
                 start: The start index of the text to include.
                 end: The end index of the text to include.
                 ellipsis: Whether to include an ellipsis at the end if the line overflows.
+                used: Precomputed cell width of `text[start:end]`.
 
             Returns:
                 A list of segments representing the line of text.
             """
             segs = range_segments(start, end)
-            used = cell_len(text[start:end])
+            if used is None:
+                used = cell_len(text[start:end])
+
             if ellipsis:
                 segs.append(Segment("…"))
                 used += 1
@@ -456,11 +453,59 @@ class Text:
             if justify == "full":
                 last = len(offsets) - 1
                 return [
-                    full_line(s, e) if i < last else line(s, e)
-                    for i, (s, e) in enumerate(offsets)
+                    full_line(start, end) if i < last else line(start, end)
+                    for i, (start, end) in enumerate(offsets)
                 ]
 
-            return [line(s, e) for s, e in offsets]
+            return [line(start, end) for start, end in offsets]
+
+        if overflow in ("ellipsis", "crop") and not no_wrap and width >= 1:
+            # Logical lines split on newlines first, blank lines preserved
+            out = []
+            lines = 0
+            ascii_only = text.isascii()
+            is_ellipsis = overflow == "ellipsis"
+            while True:
+                newline = text.find("\n", lines)
+                line_end = n if newline == -1 else newline
+                pts = [
+                    lines,
+                    *nofold_offsets(text, lines, line_end, width, ascii_only),
+                    line_end,
+                ]
+                for i in range(len(pts) - 1):
+                    start, end = pts[i], pts[i + 1]
+                    # Trim trailing spaces beyond `width`, by character count
+                    if end - start > width:
+                        t = end
+                        while t > start and text[t - 1] == " ":
+                            t -= 1
+
+                        end -= min(end - t, (end - start) - width)
+
+                    # All-ASCII width is the char count, so skip the cell_len scan
+                    used = end - start if ascii_only else cell_len(text[start:end])
+                    if used <= width:
+                        out.append(line(start, end, used=used))
+
+                    elif is_ellipsis:
+                        # Fit to width-1, fill any wide-glyph gap, then '…'
+                        fe = start + fit_end(text[start:end], width - 1)
+                        segs = range_segments(start, fe)
+                        gap = (width - 1) - cell_len(text[start:fe])
+                        if gap > 0:
+                            segs.append(blank(gap))
+
+                        segs.append(Segment("…"))
+                        out.append(segs)
+
+                    else:
+                        out.append(line(start, start + fit_end(text[start:end], width)))
+
+                if newline == -1:
+                    return out
+
+                lines = newline + 1
 
         if cell_len(text) <= width:
             return [line(0, n)]

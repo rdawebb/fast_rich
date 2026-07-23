@@ -515,7 +515,7 @@ class Console:
         self,
         *objects,
         sep: str = " ",
-        end: str = "\n",
+        end: str | None = None,
         style: str | Style | None = None,
         markup: bool | None = None,
         justify: Literal["left", "center", "right", "full"] | None = None,
@@ -527,14 +527,18 @@ class Console:
         Args:
             objects: The objects to print.
             sep: The separator between objects.
-            end: The end-of-line character.
+            end: The end-of-line character; when None (default) a renderable's own `end`
+                attribute is used, else a newline.
             style: The style to apply to the objects.
-            markup: Per-call override for markup parsing; falls back to the
-                console default when None.
+            markup: Per-call override for markup parsing; falls back to the console
+                default when None.
             justify: Per-call override for text justification.
             overflow: Per-call override for text overflow behavior.
             no_wrap: Per-call override for text wrapping.
         """
+        if end is None:
+            end = getattr(objects[0], "end", "\n") if len(objects) == 1 else "\n"
+
         if style is not None and not isinstance(style, Style):
             style = self._resolve_style(style)
 
@@ -595,6 +599,10 @@ class Console:
         # Fast path: single byte-cacheable renderable
         if len(objects) == 1 and hasattr(objects[0], BYTES_PROTOCOL):
             body = objects[0].__rich_bytes__(self, self.options)
+            # A renderable producing no lines at all prints nothing
+            if not body and not self.render_lines(objects[0]):
+                return
+
             self._write_bytes(body + _encode_end(end, self.encoding))
             return
 
@@ -605,6 +613,9 @@ class Console:
                 encode_line(tuple(line), no_color, encoding)
                 for line in self.render_lines(objects[0])
             ]
+            if not lines:  # No output at all suppresses `end` too
+                return
+
             self._write_bytes(b"\n".join(lines) + _encode_end(end, encoding))
             return
 

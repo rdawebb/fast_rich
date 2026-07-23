@@ -109,10 +109,10 @@ def test_group_nests_in_panel(render) -> None:
 
 
 def test_group_empty_renders_nothing(render) -> None:
-    """Test that an empty Group produces no content."""
+    """Test that an empty Group prints nothing at all, not even a newline (as Rich)."""
     from fastrich.group import Group
 
-    assert render(Group(), width=10) == "\n"
+    assert render(Group(), width=10) == ""
 
 
 def test_group_reflects_child_mutation(render) -> None:
