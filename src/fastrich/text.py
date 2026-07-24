@@ -50,7 +50,17 @@ def _as_style(value: str | Style | None) -> Style | None:
 class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
-    __slots__ = ("plain", "style", "justify", "overflow", "no_wrap", "_spans", "_edges")
+    __slots__ = (
+        "plain",
+        "style",
+        "justify",
+        "overflow",
+        "no_wrap",
+        "end",
+        "tab_size",
+        "_spans",
+        "_edges",
+    )
 
     def __init__(
         self,
@@ -60,6 +70,9 @@ class Text:
         justify: Literal["left", "center", "right", "full"] | None = None,
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
         no_wrap: bool | None = None,
+        end: str = "\n",
+        tab_size: int = 8,
+        spans: list[Span] | None = None,
     ) -> None:
         """Initialise with optional plain text and base style.
 
@@ -72,15 +85,20 @@ class Text:
                 inherits the render default ("fold").
             no_wrap: Disable wrapping; a too-long line is handled by `overflow`.
                 None inherits the render default (False).
-
+            end: Text written after this Text when printed on its own (default a
+                newline); an explicit `end=` on `print` takes precedence.
+            tab_size: Expand tabs to this many columns (default 8).
+            spans: Initial style spans over the plain text.
         """
-        self.plain = text
+        self.plain = text.expandtabs(tab_size) if tab_size else text
         self.style = style  # Base style applied to the whole string
         self.justify = justify
         self.overflow = overflow
         self.no_wrap = no_wrap
+        self.end = end
+        self.tab_size = tab_size
 
-        self._spans: list[Span] = []
+        self._spans: list[Span] = list(spans) if spans else []
         self._edges: list[int] | None = None  # Cached span-boundary points
 
     def __len__(self) -> int:

@@ -105,18 +105,41 @@ def test_text_style_string_definition() -> None:
     assert line[0].style == Style.parse("bold red")
 
 
-def test_progress_column_style_string() -> None:
+def test_progress_column_style_string(make_console) -> None:
     """Test that a progress column style string flows into the cell Text."""
-    import io
-
-    from fastrich.console import Console
     from fastrich.progress import Progress, TextColumn
 
     p = Progress(TextColumn("{description}", style="green"))
     p.add_task("task")
-    c = Console(
-        file=io.BytesIO(), color_system="standard", force_terminal=True, width=40
-    )
-    c.file.encoding = "utf-8"
+    c = make_console(color="standard", force_terminal=True, width=40)
     c.print(p)
     assert b"\x1b[32m" in c.file.getvalue()
+
+
+def test_text_spans_constructor() -> None:
+    """Test that spans passed to the constructor are applied."""
+    from fastrich.text import Span
+
+    t = Text("hello world", spans=[Span(0, 5, Style(bold=True))])
+    line = t.render_lines(20)[0]
+    assert any(s.style and s.style.bold and s.text == "hello" for s in line)
+
+
+def test_text_tab_size_expands() -> None:
+    """Test that tabs expand to the tab stop (default 8, configurable)."""
+    assert Text("a\tb").plain == "a       b"
+    assert Text("a\tb", tab_size=4).plain == "a   b"
+
+
+def test_text_end_attribute(make_console) -> None:
+    """Test that Text.end controls the trailing text via print's end-sentinel."""
+
+    def out(t, **kw) -> str:
+        """Render the text to a string using the given console settings."""
+        c = make_console(color=None, width=20)
+        c.print(t, **kw)
+        return c.file.getvalue()
+
+    assert out(Text("hi")) == b"hi\n"
+    assert out(Text("hi", end="")) == b"hi"
+    assert out(Text("hi", end=""), end="!") == b"hi!"  # Print end wins
