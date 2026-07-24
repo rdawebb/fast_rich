@@ -288,9 +288,9 @@ class Panel(CachedBytes, LineRenderable):
         for line in body:  # Each already inner-wide
             rows.append(
                 [
-                    Segment(b.left, bs),
+                    Segment(b.mid_left, bs),
                     *self._compose(line, pstyle),
-                    Segment(b.right, bs),
+                    Segment(b.mid_right, bs),
                 ]
             )
 

@@ -15,12 +15,12 @@ from fastrich.table import Table
 # The 6-line no-color rendering of the Name/Age + Alice/Bob table, pinned as a
 # golden string shared by test_byte_cache and test_table
 ASCII_NAME_AGE_TABLE = (
-    "+-------+-----+\n"
+    "+-------------+\n"
     "| Name  | Age |\n"
-    "+-------+-----+\n"
+    "|-------+-----|\n"
     "| Alice | 30  |\n"
     "| Bob   | 100 |\n"
-    "+-------+-----+\n"
+    "+-------------+\n"
 )
 
 

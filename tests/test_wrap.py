@@ -84,10 +84,10 @@ def test_existing_single_line_unchanged(render) -> None:
     t = Table("Name", "Age", box=ASCII)
     t.add_row("Alice", "30")
     expected = (
-        "+-------+-----+\n"
+        "+-------------+\n"
         "| Name  | Age |\n"
-        "+-------+-----+\n"
+        "|-------+-----|\n"
         "| Alice | 30  |\n"
-        "+-------+-----+\n"
+        "+-------------+\n"
     )
     assert render(t) == expected

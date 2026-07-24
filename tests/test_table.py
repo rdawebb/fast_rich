@@ -163,7 +163,7 @@ def test_show_lines_rules_between_rows(render, simple_table) -> None:
     t = simple_table([("1", "2"), ("3", "4")], show_lines=True)
     lines = render(t).splitlines()
     body = [i for i, line in enumerate(lines) if "1" in line or "3" in line]
-    assert lines[body[0] + 1].startswith("+")  # rule between the two rows
+    assert lines[body[0] + 1].startswith("|")  # rule between the two rows
     assert "3" in lines[body[0] + 2]
 
 
