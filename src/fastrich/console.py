@@ -35,6 +35,9 @@ _MAX_PRINT_CACHE = 1024
 # Pre-encoded print() line terminators
 _COMMON_ENDS = {"\n": b"\n", "": b""}
 
+# The emoji shortcode substituter, bound on first use
+_emoji_replace: Callable[[str], str] | None = None
+
 
 def _encode_end(end: str, encoding: str) -> bytes:
     """Return the encoded print() terminator, without re-encoding common cases.
@@ -267,7 +270,6 @@ class Console:
             The resulting Text.
         """
         use_markup = self._markup if markup is None else markup
-        emoji_replace = self._emoji_replace if self._emoji else None
 
         if use_markup and "[" in text:
             from .markup import render as render_markup
@@ -275,12 +277,12 @@ class Console:
             return render_markup(
                 text,
                 style,
-                emoji_replace=emoji_replace,
+                emoji_replace=self._emoji_replace if self._emoji else None,
                 style_resolver=self._resolve_style,
             )
 
-        if emoji_replace is not None:
-            text = emoji_replace(text)
+        if self._emoji and ":" in text:
+            text = self._emoji_replace(text)
 
         return Text(text, style)
 
@@ -293,9 +295,14 @@ class Console:
         Returns:
             The text with recognised shortcodes replaced by glyphs.
         """
-        from .emoji import replace
+        global _emoji_replace
 
-        return replace(text)
+        if _emoji_replace is None:
+            from .emoji import replace
+
+            _emoji_replace = replace
+
+        return _emoji_replace(text)
 
     def resolve_style(self, value: str | Style | None) -> Style | None:
         """Resolve a style param (None, a Style, or a str) to a Style or None.
