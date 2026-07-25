@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, NamedTuple, Sequence
 
 if TYPE_CHECKING:
+    from .highlighter import Highlighter
     from .theme import Theme
 
 import io
@@ -19,6 +20,24 @@ from .segment import Segment, encode_line, lru_set, split_lines
 from .style import Style
 from .text import Text
 from .wrap import wrap_offsets
+
+_DEFAULT_THEME = None
+
+
+def _default_theme() -> Theme:
+    """Return the shared default theme (built-in named styles).
+
+    Returns:
+        The default Theme instance.
+    """
+    global _DEFAULT_THEME
+    if _DEFAULT_THEME is None:
+        from .theme import Theme
+
+        _DEFAULT_THEME = Theme()
+
+    return _DEFAULT_THEME
+
 
 # A renderable is anything implementing this method, it returns an iterable of
 # child renderables (str / Text / nested renderables)
@@ -78,6 +97,8 @@ class Console:
         markup: bool = True,
         emoji: bool = True,
         theme: Theme | None = None,
+        highlight: bool = True,
+        highlighter: Highlighter | None = None,
         stderr: bool = False,
         no_color: bool = False,
         soft_wrap: bool = False,
@@ -92,6 +113,9 @@ class Console:
             force_terminal: Whether to force the use of a terminal. Defaults to None.
             markup: Whether to parse console markup in strings. Defaults to True.
             emoji: Whether to replace emoji :shortcodes: in strings. Defaults to True.
+            theme: The theme to use for the console. Defaults to the default theme if None.
+            highlight: Whether to highlight syntax in strings. Defaults to True.
+            highlighter: The highlighter to use for syntax highlighting. Defaults to None.
             stderr: Write to stderr instead of stdout (when no file is specified). Defaults to False.
             no_color: Force disable color output regardless of color system. Defaults to False.
             soft_wrap: Wrap text to fit within the terminal width. Defaults to False.
@@ -108,7 +132,15 @@ class Console:
         self._force_terminal = force_terminal
         self._markup = markup
         self._emoji = emoji
-        self._theme = theme
+        self._theme = theme if theme is not None else _default_theme()
+        self.highlight = highlight
+
+        if highlighter is None:
+            from .highlighter import ReprHighlighter
+
+            highlighter = ReprHighlighter()
+        self.highlighter = highlighter
+
         self._color_system_arg = (
             color_system  # "auto" | None | "standard" | "256" | "truecolor"
         )
@@ -555,6 +587,7 @@ class Console:
         overflow: Literal["fold", "ellipsis", "crop"] | None = None,
         no_wrap: bool | None = None,
         soft_wrap: bool | None = None,
+        highlight: bool | None = None,
     ) -> None:
         """Print the given objects to the console, applying the given style if provided.
 
@@ -571,12 +604,16 @@ class Console:
             no_wrap: Per-call override for text wrapping.
             soft_wrap: Per-call soft-wrap override; when set, text is emitted
                 unwrapped (the terminal wraps). Falls back to the console default.
+            highlight: Per-call override for auto-highlighting string args.
         """
         if end is None:
             end = getattr(objects[0], "end", "\n") if len(objects) == 1 else "\n"
 
         if soft_wrap is None:
             soft_wrap = self.soft_wrap
+
+        if highlight is None:
+            highlight = self.highlight
 
         if style is not None and not isinstance(style, Style):
             style = self._resolve_style(style)
@@ -598,6 +635,7 @@ class Console:
                 overflow,
                 no_wrap,
                 soft_wrap,
+                highlight,
             )
             cache = self._print_cache
             cached = cache.get(key)
@@ -607,20 +645,24 @@ class Console:
 
             else:
                 no_color, encoding = self.no_color, self.encoding
-                t = self._str_to_text(text, style, markup)
 
-                if soft_wrap:
-                    lines = [
-                        encode_line(tuple(line), no_color, encoding)
-                        for line in split_lines(t._segments())
-                    ]
+                if soft_wrap or formatted or highlight or (use_markup and "[" in text):
+                    t = self._str_to_text(text, style, markup)
 
-                elif formatted or (use_markup and "[" in text):
-                    lines = [
-                        encode_line(tuple(line), no_color, encoding)
-                        for line in t.render_lines(
+                    if highlight:
+                        self.highlighter.highlight(t, self._resolve_style)
+
+                    if soft_wrap:
+                        line_iter = split_lines(t._segments())
+
+                    else:
+                        line_iter = t.render_lines(
                             self.width, justify, overflow, no_wrap=no_wrap
                         )
+
+                    lines = [
+                        encode_line(tuple(line), no_color, encoding)
+                        for line in line_iter
                     ]
 
                 # Plain string
@@ -674,9 +716,10 @@ class Console:
                 segments.append(Segment(sep))
 
             if isinstance(obj, str):
-                segments.extend(
-                    self.render(self._str_to_text(obj, style, markup), opts)
-                )
+                t = self._str_to_text(obj, style, markup)
+                if highlight:
+                    self.highlighter.highlight(t, self._resolve_style)
+                segments.extend(self.render(t, opts))
 
             else:
                 segments.extend(self.render(obj, opts))

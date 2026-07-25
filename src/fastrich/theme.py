@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from typing import Mapping
 
+from .highlighter import REPR_STYLES
 from .style import Style
 
-# Built-in semantic styles, intentionally minimal for now
-DEFAULT_STYLES: dict[str, Style] = {}
+# Built-in named styles available to every theme (inherit=True)
+DEFAULT_STYLES: dict[str, Style] = dict(REPR_STYLES)
 
 
 def _as_style(value: Style | str) -> Style:

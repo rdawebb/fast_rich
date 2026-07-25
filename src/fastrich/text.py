@@ -7,9 +7,11 @@ at span boundaries and resolves the effective style per interval.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Callable, Literal, NamedTuple
 
 if TYPE_CHECKING:
+    import re
+
     from .console import Console, ConsoleOptions
 
 from ._width import cell_len
@@ -181,6 +183,42 @@ class Text:
         return self
 
     stylise = stylize  # British-spelling alias
+
+    def highlight_regex(
+        self, pattern: re.Pattern, get_style: Callable[[str], Style | None]
+    ) -> Text:
+        """Add spans for each named group of every match of a compiled regex.
+
+        For each match, every named group that participated contributes a span
+        over its range, styled by `get_style(group_name)`. Groups whose style
+        resolves to None are skipped.
+
+        Args:
+            pattern: A compiled `re.Pattern` with named groups.
+            get_style: Callable mapping a group name to a Style or None.
+
+        Returns:
+            The Text object for chaining.
+        """
+        names = pattern.groupindex
+        spans = self._spans
+        added = False
+
+        for match in pattern.finditer(self.plain):
+            for name in names:
+                start, end = match.span(name)
+                if start < 0 or start >= end:
+                    continue
+
+                style = get_style(name)
+                if style:
+                    spans.append(Span(start, end, style))
+                    added = True
+
+        if added:
+            self._edges = None
+
+        return self
 
     def _edge_points(self) -> list[int]:
         """Sorted span-boundary points, memoised until a span mutator runs.
