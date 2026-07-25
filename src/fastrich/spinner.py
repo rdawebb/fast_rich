@@ -7,7 +7,8 @@ Holds a frame set and interval; the current frame is chosen from elapsed time.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions

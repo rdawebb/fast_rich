@@ -3,7 +3,6 @@
 import functools
 
 import pytest
-
 from conftest import ASCII_NAME_AGE_TABLE
 
 from fastrich.box import ASCII

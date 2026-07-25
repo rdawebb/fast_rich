@@ -17,7 +17,9 @@ def test_spinner_wraps() -> None:
     """Test that spinner wraps around correctly after reaching the end of frames."""
     s = Spinner("dots")
     # 10 frames at 0.08 -> back to frame 0
-    assert list(s._segments_at(0.0))[0].text == list(s._segments_at(0.8))[0].text
+    assert [seg.text for seg in s._segments_at(0.0)] == [
+        seg.text for seg in s._segments_at(0.8)
+    ]
 
 
 def test_spinner_with_text() -> None:

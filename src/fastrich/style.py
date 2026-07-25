@@ -242,7 +242,7 @@ class Style:
         return text.encode(encoding)
 
     @classmethod
-    def parse(cls, definition: str) -> "Style":
+    def parse(cls, definition: str) -> Style:
         """Parse a style definition string into a `Style` instance.
 
         Args:
@@ -258,7 +258,7 @@ NULL_STYLE = Style()
 
 
 @lru_cache(maxsize=8192)
-def _combine(a: "Style", b: "Style") -> "Style":
+def _combine(a: Style, b: Style) -> Style:
     """Value-keyed style combine (a under b). Equal styles dedupe via
     Style's hash/eq on `_key`, so the bound covers distinct style pairs.
 
@@ -280,7 +280,7 @@ def _combine(a: "Style", b: "Style") -> "Style":
 
 
 @lru_cache(maxsize=1024)
-def _parse(definition: str) -> "Style":
+def _parse(definition: str) -> Style:
     """Parse a style definition string into a `Style` instance.
 
     Args:
@@ -303,7 +303,7 @@ def _parse(definition: str) -> "Style":
             kw[tok] = True
             continue
 
-        name = tok[7:] if tok.startswith("bright_") else tok
+        name = tok.removeprefix("bright_")
         if name in _COLORS:
             kw["color"] = tok
             continue

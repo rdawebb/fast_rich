@@ -52,5 +52,5 @@ def test_cell_len_parity_cjk_policy(text) -> None:
 def test_char_width_parity_sweep() -> None:
     """Assert `char_width` agrees between Rust and Python implementations across the BMP and astral planes."""
     # Walk the BMP + a slice of the astral planes
-    for cp in list(range(0x0, 0x3000)) + list(range(0x1F000, 0x1FB00)):
+    for cp in list(range(0x3000)) + list(range(0x1F000, 0x1FB00)):
         assert rs.char_width(cp) == py.char_width(cp), hex(cp)

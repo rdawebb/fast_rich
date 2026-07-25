@@ -78,7 +78,7 @@ def render_module(version, emoji) -> str:
         "EMOJI: dict[str, str] = {",
     ]
     for name in sorted(emoji):
-        lines.append(f"    {name!r}: {ascii(emoji[name])},")
+        lines.append(f"    {name!r}: {emoji[name]!a},")
 
     lines.append("}")
 

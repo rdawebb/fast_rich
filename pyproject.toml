@@ -60,6 +60,17 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Highlighter is a pure leaf"
+type = "forbidden"
+source_modules = ["fastrich.highlighter"]
+forbidden_modules = [
+  "fastrich.text",
+  "fastrich.console",
+  "fastrich.markup",
+  "fastrich.theme",
+]
+
+[[tool.importlinter.contracts]]
 name = "Emoji is a pure leaf"
 type = "forbidden"
 source_modules = ["fastrich.emoji"]

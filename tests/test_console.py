@@ -1,7 +1,7 @@
 """Unit tests for console behaviour: capabilities, color policy, render protocol, output."""
 
 import io
-from typing import Iterable
+from collections.abc import Iterable
 
 from fastrich.console import Console
 from fastrich.style import Style

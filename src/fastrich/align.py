@@ -52,7 +52,7 @@ class Align(CachedBytes, LineRenderable):
         self.style = style
 
     @classmethod
-    def center(cls, renderable, **kwargs) -> "Align":
+    def center(cls, renderable, **kwargs) -> Align:
         """Center the renderable horizontally.
 
         Args:
@@ -65,7 +65,7 @@ class Align(CachedBytes, LineRenderable):
         return cls(renderable, "center", **kwargs)
 
     @classmethod
-    def left(cls, renderable, **kwargs) -> "Align":
+    def left(cls, renderable, **kwargs) -> Align:
         """Align the renderable to the left.
 
         Args:
@@ -78,7 +78,7 @@ class Align(CachedBytes, LineRenderable):
         return cls(renderable, "left", **kwargs)
 
     @classmethod
-    def right(cls, renderable, **kwargs) -> "Align":
+    def right(cls, renderable, **kwargs) -> Align:
         """Align the renderable to the right.
 
         Args:

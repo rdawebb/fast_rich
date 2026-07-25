@@ -13,6 +13,7 @@ IP/MAC addresses, and tag-like fragments.
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from .style import Style
 
@@ -64,7 +65,7 @@ class NullHighlighter(Highlighter):
 
     def highlight(self, text, resolve) -> None:
         """Add no spans."""
-        return None
+        return
 
 
 class RegexHighlighter(Highlighter):
@@ -74,8 +75,8 @@ class RegexHighlighter(Highlighter):
     the console's resolver. Patterns are compiled once per class.
     """
 
-    highlights: list[str] = []
-    base_style: str = ""
+    highlights: ClassVar[list[str]] = []
+    base_style: ClassVar[str] = ""
 
     def __init__(self) -> None:
         """Compile this highlighter's patterns."""
@@ -121,7 +122,7 @@ class ReprHighlighter(RegexHighlighter):
     """Highlight the shapes typically produced by Python `__repr__`."""
 
     base_style = "repr."
-    highlights = [
+    highlights: ClassVar[list[str]] = [
         r"(?P<tag_start><)(?P<tag_name>[-\w.:|]*)(?P<tag_contents>[\w\W]*)(?P<tag_end>>)",
         r'(?P<attrib_name>[\w_]{1,50})=(?P<attrib_value>"?[\w_]+"?)?',
         r"(?P<brace>[][{}()])",

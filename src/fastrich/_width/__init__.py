@@ -42,4 +42,4 @@ def char_cell_len(ch: str) -> int:
     return char_width(cp)
 
 
-__all__ = ["cell_len", "char_width", "char_cell_len", "UNICODE_VERSION"]
+__all__ = ["UNICODE_VERSION", "cell_len", "char_cell_len", "char_width"]

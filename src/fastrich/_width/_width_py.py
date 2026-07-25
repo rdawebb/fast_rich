@@ -13,14 +13,15 @@ Tier 3  cluster segmentation      -> only when ZWJ / regional indicators /
 """
 
 from bisect import bisect_right
+from collections.abc import Sequence
 from functools import lru_cache
-from typing import Optional, Sequence, TypeVar
+from typing import TypeVar
 
 from ._width_table import AMBIGUOUS_RANGES, UNICODE_VERSION, WIDTH_RANGES
 
 _Range = TypeVar("_Range", bound=tuple[int, ...])
 
-__all__ = ["cell_len", "char_width", "UNICODE_VERSION"]
+__all__ = ["UNICODE_VERSION", "cell_len", "char_width"]
 
 # Parallel arrays for bisect: _W_LOS[i] is the low bound of _W_RANGES[i]
 _W_RANGES = WIDTH_RANGES
@@ -36,9 +37,7 @@ _RI_LO, _RI_HI = 0x1F1E6, 0x1F1FF  # Regional indicators
 _MOD_LO, _MOD_HI = 0x1F3FB, 0x1F3FF  # Emoji skin-tone modifiers
 
 
-def _in_ranges(
-    cp: int, ranges: Sequence[_Range], los: Sequence[int]
-) -> Optional[_Range]:
+def _in_ranges(cp: int, ranges: Sequence[_Range], los: Sequence[int]) -> _Range | None:
     """Return the range containing `cp`, or None if not found.
 
     Args:

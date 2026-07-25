@@ -8,7 +8,7 @@ built-in defaults (currently minimal). With no theme set, names fall through to
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from .highlighter import REPR_STYLES
 from .style import Style

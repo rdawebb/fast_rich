@@ -10,8 +10,9 @@ the full table width, including trailing blank cells.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from math import ceil
-from typing import TYPE_CHECKING, Iterator, Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions

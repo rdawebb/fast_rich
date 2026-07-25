@@ -278,7 +278,9 @@ def render_rust_module(version, width_ranges, ambiguous_ranges) -> str:
         + fmt3(width_ranges)
         + "\n];\n\n"
         "/// (lo, hi) for East Asian Ambiguous codepoints, sorted by lo.\n"
-        "pub const AMBIGUOUS_RANGES: &[(u32, u32)] = &[\n" + fmt2(ambiguous_ranges) + "\n];\n"
+        "pub const AMBIGUOUS_RANGES: &[(u32, u32)] = &[\n"
+        + fmt2(ambiguous_ranges)
+        + "\n];\n"
     )
 
 

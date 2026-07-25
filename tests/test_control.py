@@ -34,9 +34,8 @@ def test_screen_brackets_output(make_console) -> None:
 def test_screen_restores_on_exception(make_console) -> None:
     """Test that screen() restores the cursor and primary buffer even on error."""
     c = make_console(color="standard")
-    with pytest.raises(ValueError):
-        with c.screen():
-            raise ValueError("boom")
+    with pytest.raises(ValueError), c.screen():
+        raise ValueError("boom")
     assert c.file.getvalue().endswith(ctl.SHOW_CURSOR + ctl.ALT_SCREEN_EXIT)
 
 

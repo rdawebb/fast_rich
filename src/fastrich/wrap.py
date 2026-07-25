@@ -8,7 +8,7 @@ than the width are hard-broken at codepoint boundaries.
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from ._width import cell_len, char_cell_len
 

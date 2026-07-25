@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import Event, RLock, Thread
 from time import monotonic
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 from . import control
 
@@ -68,7 +69,7 @@ class Live:
         self._stop_event: Event | None = None
         self._thread: Thread | None = None
 
-    def __enter__(self) -> Live:
+    def __enter__(self) -> Live:  # noqa: PYI034 - `Self` is 3.11+, minimum is 3.10
         """Start the live display on context entry.
 
         Returns:

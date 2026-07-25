@@ -7,7 +7,9 @@ at span boundaries and resolves the effective style per interval.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Literal, NamedTuple
+from collections.abc import Callable
+from itertools import pairwise
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     import re
@@ -53,15 +55,15 @@ class Text:
     """Represents a plain string with styled spans, measured through the width engine."""
 
     __slots__ = (
+        "_edges",
+        "_spans",
+        "end",
+        "justify",
+        "no_wrap",
+        "overflow",
         "plain",
         "style",
-        "justify",
-        "overflow",
-        "no_wrap",
-        "end",
         "tab_size",
-        "_spans",
-        "_edges",
     )
 
     def __init__(
@@ -235,9 +237,9 @@ class Text:
 
             for s in self._spans:
                 st = s.start
-                pts.add(st if st > 0 else 0)  # max(0, start)
+                pts.add(max(0, st))  # max(0, start)
                 en = s.end
-                pts.add(en if en < n else n)  # min(n, end)
+                pts.add(min(n, en))  # min(n, end)
 
             edges = self._edges = sorted(pts)
 
@@ -266,7 +268,7 @@ class Text:
 
         pts = self._edge_points()
 
-        for lo, hi in zip(pts, pts[1:]):
+        for lo, hi in pairwise(pts):
             style = base
             for span in spans:
                 if span.start <= lo and span.end >= hi:
@@ -410,7 +412,7 @@ class Text:
 
             pts = [start, *(p for p in edges if start < p < end), end]
             out = []
-            for lo, hi in zip(pts, pts[1:]):
+            for lo, hi in pairwise(pts):
                 style = base
                 for span in spans:
                     if span.start <= lo and span.end >= hi:

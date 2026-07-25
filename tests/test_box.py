@@ -9,16 +9,14 @@ import io
 
 import pytest
 
-import fastrich.box as box
+from fastrich import box
 from fastrich.panel import Panel
 from fastrich.table import Table
 
-rich = pytest.importorskip("rich")
-
-import rich.box as rich_box  # noqa: E402
-import rich.console as rich_console  # noqa: E402
-import rich.panel as rich_panel  # noqa: E402
-import rich.table as rich_table  # noqa: E402
+rich_box = pytest.importorskip("rich.box")
+rich_console = pytest.importorskip("rich.console")
+rich_panel = pytest.importorskip("rich.panel")
+rich_table = pytest.importorskip("rich.table")
 
 BOX_NAMES = [
     "ASCII",

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -444,7 +445,7 @@ class Progress(LineRenderable):
             tuple[int, int], tuple[object, list[Segment], int]
         ] = {}
 
-    def __enter__(self) -> Progress:
+    def __enter__(self) -> Progress:  # noqa: PYI034 - `Self` is 3.11+, minimum is 3.10
         """Start a managed live display for the progress bar.
 
         Returns:
@@ -498,8 +499,8 @@ class Progress(LineRenderable):
     def add_task(
         self,
         description: str,
-        total: int | float = 100,
-        completed: int | float = 0,
+        total: float = 100,
+        completed: float = 0,
         **fields,
     ) -> int:
         """Add a task to the progress bar.

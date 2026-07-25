@@ -7,7 +7,8 @@ memoised per line, so an unchanged line reuses its bytes instead of re-encoding.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, NamedTuple, Sequence
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -250,7 +251,6 @@ class CachedBytes:
 
     def _on_mark_dirty(self) -> None:
         """Hook for subclasses to drop caches derived beyond `_byte_cache`."""
-        pass
 
     def _iter_lines(
         self, console: Console, options: ConsoleOptions

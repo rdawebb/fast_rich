@@ -8,7 +8,8 @@ width, columns shrink proportionally.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Literal, NamedTuple, Sequence
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from .console import Console, ConsoleOptions
@@ -39,7 +40,7 @@ def _cell_plain(cell: str | Text) -> str:
 
 def _plain_line(
     text: str, width: int, justify: str, base: Style | None
-) -> "list[Segment]":
+) -> list[Segment]:
     """Lay out one plain (span-free) cell line: a styled run plus padding.
 
     Byte-for-byte equivalent to `Text.render_lines` for a single line that
@@ -170,15 +171,15 @@ class Column:
     """A column that displays data in a table."""
 
     __slots__ = (
-        "header",
         "footer",
-        "justify",
-        "style",
+        "header",
         "header_style",
-        "min_width",
+        "justify",
         "max_width",
-        "overflow",
+        "min_width",
         "no_wrap",
+        "overflow",
+        "style",
     )
 
     def __init__(
@@ -336,7 +337,7 @@ class Table(CachedBytes):
 
         return self
 
-    def add_row(self, *cells: "str | Text") -> Table:
+    def add_row(self, *cells: str | Text) -> Table:
         """Add a row to the table with the given cells.
 
         Args:
@@ -362,7 +363,7 @@ class Table(CachedBytes):
 
         return self
 
-    def update_cell(self, row: int, column: int, value: "str | Text") -> "Table":
+    def update_cell(self, row: int, column: int, value: str | Text) -> Table:
         """Replace a single cell, marking that row dirty and invalidating caches.
 
         Keeps a plain `str` as `str` so the cell stays on the `_plain_line` fast

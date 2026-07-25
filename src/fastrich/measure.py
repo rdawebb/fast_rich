@@ -108,7 +108,7 @@ def measure(console: Console, renderable, options: ConsoleOptions) -> Measuremen
 
     # Fallback: render and measure the widest produced line
 
-    lines = list((console.render_lines(renderable, options)))
+    lines = list(console.render_lines(renderable, options))
     mx = max((sum(cell_len(s.text) for s in line) for line in lines), default=0)
 
     return Measurement(min(mx, width), min(mx, width))

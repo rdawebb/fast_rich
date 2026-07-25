@@ -1,7 +1,6 @@
 """Unit tests for Table rendering: grid layout, justify, overflow, header styling, fit."""
 
 import pytest
-
 from conftest import ASCII_NAME_AGE_TABLE
 
 from fastrich._width import cell_len
